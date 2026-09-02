@@ -5,12 +5,12 @@
 // the one file that knows about Svelte, so the sim can be driven from a test,
 // a worker or a different shell without dragging the UI along.
 
-import { loadSimulation, type Simulation } from "../sim/scene";
-import { Policy } from "../sim/policy";
-import { MicroduckController, type Phase } from "../sim/controller";
-import { CTRL_DT, TRUNK_BODY } from "../sim/microduck";
-import { Viewer } from "../render/viewer";
-import { assetUrl } from "../asset-url";
+import { loadSimulation, type Simulation } from "../sim/scene.ts";
+import { Policy } from "../sim/policy.ts";
+import { MicroduckController, type Phase } from "../sim/controller.ts";
+import { CTRL_DT, TRUNK_BODY } from "../sim/microduck.ts";
+import { Viewer } from "../render/viewer.ts";
+import { assetUrl } from "../asset-url.ts";
 
 export const POLICY_NAME = "alpha_stand.onnx";
 const POLICY_URL = assetUrl(`policies/${POLICY_NAME}`);

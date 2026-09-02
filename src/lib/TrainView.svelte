@@ -132,6 +132,50 @@
     </table>
   {/if}
 
+  <section class="env">
+    <header class="sub">
+      <div>
+        <h3>Vectorized environment <span class="tag">M1</span></h3>
+        <p>
+          The real training env — reset, reward, termination — running in a
+          worker pool. The policy here is randomly initialised, so the reward is
+          a floor rather than a result; whether the reward stack ranks good
+          behaviour above bad is settled by <code>npm run check:env</code>,
+          which replays the shipped <code>alpha_stand</code> against these same
+          modules.
+        </p>
+      </div>
+      <button disabled={bench.envRunning} onclick={() => void bench.runEnv()}>
+        {bench.envRunning ? "Rolling out…" : "Run rollout"}
+      </button>
+    </header>
+
+    {#if bench.envError}
+      <p class="error">{bench.envError}</p>
+    {:else if bench.envStats}
+      {@const s = bench.envStats}
+      <dl class="stats">
+        <div><dt>Envs</dt><dd>{s.envs}</dd></div>
+        <div><dt>Control steps</dt><dd>{s.controlSteps.toLocaleString()}</dd></div>
+        <div><dt>Throughput</dt><dd>{rate(s.stepsPerSec)}/s</dd></div>
+        <div><dt>× realtime</dt><dd>{s.realtimeFactor.toFixed(0)}×</dd></div>
+        <div><dt>Episodes</dt><dd>{s.episodes}</dd></div>
+        <div><dt>Reward / step</dt><dd>{s.rewardPerStep.toFixed(3)}</dd></div>
+        <div><dt>Standing</dt><dd>{(s.standingFraction * 100).toFixed(1)}%</dd></div>
+      </dl>
+      <table class="terms">
+        <tbody>
+          {#each Object.entries(s.breakdown).sort((a, b) => b[1] - a[1]) as [name, value] (name)}
+            <tr>
+              <td>{name}</td>
+              <td class="n" class:neg={value < 0}>{value.toFixed(4)}</td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    {/if}
+  </section>
+
   {#if bench.best && !bench.running}
     {@const best = bench.best}
     {@const hours = bench.referenceHours ?? 0}
@@ -220,4 +264,26 @@
   .verdict strong { color: var(--ink); }
   .verdict.pass { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); }
   .error { color: var(--danger); font-size: 12px; }
+
+  .env {
+    display: flex; flex-direction: column; gap: 10px;
+    padding-top: 14px; border-top: 1px solid var(--line);
+  }
+  .sub { display: flex; align-items: flex-start; gap: 20px; }
+  .sub > div { flex: 1; min-width: 0; }
+  h3 { margin: 0; font-size: 13px; letter-spacing: -0.01em; }
+  code { background: var(--panel-hi); padding: 1px 4px; border-radius: 4px; font-size: 0.92em; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 6px 22px; margin: 0; font-size: 12px; }
+  .stats div { display: flex; flex-direction: column; gap: 2px; }
+  .stats dt {
+    font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted);
+  }
+  .stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .terms { border-collapse: collapse; font-size: 11px; font-variant-numeric: tabular-nums; }
+  .terms td { padding: 2px 16px 2px 0; border: 0; color: var(--muted); }
+  .terms td.n { text-align: right; color: var(--ink); }
+  .terms td.neg { color: var(--warn); }
 </style>

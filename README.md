@@ -59,14 +59,26 @@ Drag to orbit, scroll to zoom; the camera follows the trunk.
 ## Checking it without a browser
 
 ```bash
-node scripts/check-standup.mjs 5
+npm run check:standup   # the deployment loop: does the duck get up?
+npm run check:env       # the training env: does the reward stack rank behaviour?
+npm run typecheck
 ```
 
-Runs the same physics and the same policy under Node and asserts the duck
-stands up from five different tumbled poses. It re-derives the observation
-vector independently of `src/`, so a mismatch between the two is exactly what
-it catches. This is the fastest way to tell "the policy loop is wrong" apart
-from "the rendering is wrong".
+`check:standup` runs the same physics and the same policy under Node and
+asserts the duck stands up from five tumbled poses. It re-derives the
+observation vector independently of `src/`, so a mismatch between the two is
+exactly what it catches.
+
+`check:env` replays three controllers — the shipped `alpha_stand`, a
+do-nothing baseline and random noise — through the training environment with
+the same seed, and asserts the reward stack ranks them correctly. A reward
+function cannot be validated alone: "alpha_stand scores 8.9" means nothing
+until you know that doing nothing scores 1.6. Unlike `check:standup` this one
+imports the real `src/` modules (Node 24 strips the types), so it tests the
+code the trainer will run.
+
+Both are far faster to iterate on than a browser, which is why the training
+work leans on them.
 
 ## How the loop works
 
@@ -143,11 +155,15 @@ Two deliberate lines in that list:
 
 ## Where it is going
 
+Training is being built in milestones — see [`docs/training-plan.md`](docs/training-plan.md)
+for the measured budget, the architecture and the sim2real seams.
+
 1. ~~In-browser simulation + inference of a trained policy~~ ✅
-2. Load any policy — the other shipped checkpoints, and community ones off the
-   Hugging Face Hub
-3. Reward / environment authoring in the browser
-4. In-browser training (WebGPU), export to ONNX, deploy to a real duck
+2. ~~M0: throughput harness~~ ✅ — ~58k control steps/s on an 18-thread laptop
+3. ~~M1: vectorized environment + the sim2real seams~~ ✅
+4. M2: PPO on CPU, checkpoint/resume
+5. M3: fast rollout inference, WebGPU learner
+6. M4: fine-tune a shipped checkpoint; M5: from-scratch, export to ONNX
 
 ## Known rough edges
 

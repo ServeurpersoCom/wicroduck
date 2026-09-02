@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { CTRL_DT, OBS_SIZE, NUM_JOINTS, TIMESTEP } from "../sim/microduck";
+  import { CTRL_DT, OBS_SIZE, NUM_JOINTS, TIMESTEP } from "../sim/microduck.ts";
   import { POLICY_NAME, type Session } from "./session.svelte";
 
   const { session }: { session: Session } = $props();

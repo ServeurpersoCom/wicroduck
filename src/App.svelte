@@ -5,7 +5,7 @@
   import StatusBar from "./lib/StatusBar.svelte";
   import TrainView from "./lib/TrainView.svelte";
   import { Session } from "./lib/session.svelte";
-  import type { View } from "./lib/views";
+  import type { View } from "./lib/views.ts";
 
   const session = new Session();
   let view = $state<View>("sim");

@@ -1,6 +1,8 @@
 // Reactive wrapper around the M0 throughput sweep.
 
-import { runSweep, type CellResult, type SweepPlan } from "../train/benchmark";
+import { runSweep, type CellResult, type SweepPlan } from "../train/benchmark.ts";
+import { EnvPool } from "../train/rollout.ts";
+import type { RolloutStats } from "../train/env-protocol.ts";
 
 /** Reference figures the sweep is judged against (see docs/training-plan.md). */
 export const REFERENCE_STEPS = 4096 * 24 * 15_000; // ~1.47B control steps
@@ -34,6 +36,15 @@ export class Bench {
   progress = $state({ done: 0, total: 0 });
   results = $state<CellResult[]>([]);
   error = $state<string | null>(null);
+
+  // ── M1: the vectorized environment ─────────────────────────────────────
+  envWorkers = $state(4);
+  envsPerEnvWorker = $state(16);
+  envRunning = $state(false);
+  envStats = $state<(RolloutStats & { stepsPerSec: number; realtimeFactor: number }) | null>(null);
+  envError = $state<string | null>(null);
+
+  readonly #pool = new EnvPool();
 
   #stop = false;
 
@@ -70,6 +81,37 @@ export class Bench {
 
   stop(): void {
     this.#stop = true;
+  }
+
+  /**
+   * Run one rollout through the real vectorized env, in workers.
+   *
+   * The policy here is a randomly initialised MLP, so the reward is a floor,
+   * not a result — what this proves is that the env steps, resets, scores and
+   * terminates correctly at pool scale in a browser. Whether the reward stack
+   * ranks good behaviour above bad is settled by `npm run check:env`, which
+   * replays the shipped alpha_stand policy against these same modules.
+   */
+  async runEnv(steps = 300): Promise<void> {
+    if (this.envRunning) return;
+    this.envRunning = true;
+    this.envError = null;
+    this.envStats = null;
+    try {
+      await this.#pool.start({
+        workers: this.envWorkers,
+        envs: this.envsPerEnvWorker,
+        robotXml: "robot_allcollisions-nv.xml",
+        tumbleFraction: 0.5,
+        episodeLengthS: 6,
+      });
+      this.envStats = await this.#pool.rollout(steps);
+    } catch (err) {
+      this.envError = err instanceof Error ? err.message : String(err);
+    } finally {
+      await this.#pool.dispose();
+      this.envRunning = false;
+    }
   }
 
   async run(): Promise<void> {

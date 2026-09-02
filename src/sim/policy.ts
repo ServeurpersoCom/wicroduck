@@ -8,7 +8,7 @@
 // vite.config.ts adds the `onnxruntime-web-use-extern-wasm` resolve condition
 // so the .wasm stays a sidecar instead of being base64-inlined into the bundle.
 import * as ort from "onnxruntime-web/wasm";
-import { assetUrl } from "../asset-url";
+import { assetUrl } from "../asset-url.ts";
 
 // Configured on first load, never at module scope — see loadMujoco() for why.
 // Static hosting sends no COOP/COEP headers, so SharedArrayBuffer — and with
@@ -23,11 +23,15 @@ function configureOrt(): void {
 }
 
 export class Policy {
-  private constructor(
-    private readonly session: ort.InferenceSession,
-    private readonly inputName: string,
-    private readonly outputName: string,
-  ) {}
+  private readonly session: ort.InferenceSession;
+  private readonly inputName: string;
+  private readonly outputName: string;
+
+  private constructor(session: ort.InferenceSession, inputName: string, outputName: string) {
+    this.session = session;
+    this.inputName = inputName;
+    this.outputName = outputName;
+  }
 
   static async load(url: string): Promise<Policy> {
     configureOrt();

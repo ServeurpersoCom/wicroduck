@@ -9,9 +9,9 @@
 import {
   ACTION_SCALE, CMD_SIZE, CTRL_DT, DECIMATION, DEFAULT_POSE, FALLEN_GZ,
   GYRO_SENSOR, JOINT_NAMES, NUM_JOINTS, OBS_SIZE, TRUNK_BODY, UPRIGHT_GZ,
-} from "./microduck";
-import type { Policy } from "./policy";
-import type { Simulation } from "./scene";
+} from "./microduck.ts";
+import type { Policy } from "./policy.ts";
+import type { Simulation } from "./scene.ts";
 
 /**
  * What the duck is doing right now.
@@ -73,10 +73,12 @@ export class MicroduckController {
   /** Fires when a get-up attempt ends: `true` if the duck is back on its feet. */
   onRecoveryEnd: ((succeeded: boolean) => void) | null = null;
 
-  constructor(
-    private readonly sim: Simulation,
-    private readonly policy: Policy,
-  ) {
+  private readonly sim: Simulation;
+  private readonly policy: Policy;
+
+  constructor(sim: Simulation, policy: Policy) {
+    this.sim = sim;
+    this.policy = policy;
     const { mujoco, model } = sim;
     this.qposAdr = JOINT_NAMES.map((n) => model.jnt(n).qposadr);
     this.dofAdr = JOINT_NAMES.map((n) => model.jnt(n).dofadr);

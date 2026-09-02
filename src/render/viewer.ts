@@ -5,7 +5,7 @@
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { GEOM, type MjData, type MjModel } from "../sim/mujoco";
+import { GEOM, type MjData, type MjModel } from "../sim/mujoco.ts";
 
 /** MuJoCo is z-up, three.js is y-up. One rotation on the root holds the
  *  whole scene instead of converting every pose. */

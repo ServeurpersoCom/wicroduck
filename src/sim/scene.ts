@@ -6,9 +6,9 @@
 // separate from compiling a model out of it, because the throughput harness
 // compiles several model variants from one VFS.
 
-import { loadMujoco, type MjData, type MjModel, type Mujoco } from "./mujoco";
-import { DEFAULT_POSE, TIMESTEP } from "./microduck";
-import { assetUrl } from "../asset-url";
+import { loadMujoco, type MjData, type MjModel, type Mujoco } from "./mujoco.ts";
+import { DEFAULT_POSE, TIMESTEP } from "./microduck.ts";
+import { assetUrl } from "../asset-url.ts";
 
 /** Deferred: `assetUrl` needs a base, which a worker only has after init. */
 const modelDir = () => assetUrl("model/microduck");

@@ -11,7 +11,9 @@
     "prebuild": "npm run prepare-assets",
     "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
     "preview": "vite preview",
-    "typecheck": "svelte-check --tsconfig ./tsconfig.json"
+    "typecheck": "svelte-check --tsconfig ./tsconfig.json",
+    "check:env": "node scripts/check-env.ts",
+    "check:standup": "node scripts/check-standup.mjs"
   },
   "dependencies": {
     "@mujoco/mujoco": "^3.12.0",

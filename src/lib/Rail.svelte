@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { VIEWS, type View } from "./views";
+  import { VIEWS, type View } from "./views.ts";
 
   let { view = $bindable() }: { view: View } = $props();
 </script>

@@ -4,11 +4,11 @@
 // than one env per worker: the benchmark that motivated this measured ~1.9x
 // better per-step throughput that way.
 
-import { setAssetBase } from "../asset-url";
-import { compileScene, loadModelAssets, type ModelAssets } from "../sim/scene";
-import { DECIMATION, NUM_JOINTS, OBS_SIZE } from "../sim/microduck";
-import { Mlp } from "./mlp";
-import type { FromWorker, ToWorker, WorkerStats } from "./protocol";
+import { setAssetBase } from "../asset-url.ts";
+import { compileScene, loadModelAssets, type ModelAssets } from "../sim/scene.ts";
+import { DECIMATION, NUM_JOINTS, OBS_SIZE } from "../sim/microduck.ts";
+import { Mlp } from "./mlp.ts";
+import type { FromWorker, ToWorker, WorkerStats } from "./protocol.ts";
 
 let assets: ModelAssets | null = null;
 let model: import("../sim/mujoco").MjModel | null = null;

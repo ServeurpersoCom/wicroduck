@@ -32,14 +32,19 @@ ort.env.logLevel = "error";
 const mj = await loadMujoco();
 const vfs = new mj.MjVFS();
 const manifest = JSON.parse(fs.readFileSync(path.join(MODEL, "manifest.json"), "utf8"));
-for (const f of manifest.xml) vfs.addBuffer(f, new Uint8Array(fs.readFileSync(path.join(MODEL, f))));
-for (const f of manifest.meshes) {
+// The Simulate path runs the full-collision model with its visual geoms — the
+// same one the viewport compiles, which is the point of this check.
+const ROBOT_XML = "robot_allcollisions.xml";
+const entry = manifest.models.find((m) => m.file === ROBOT_XML);
+if (!entry) throw new Error(`${ROBOT_XML} missing from manifest; run npm run prepare-assets`);
+vfs.addBuffer(ROBOT_XML, new Uint8Array(fs.readFileSync(path.join(MODEL, ROBOT_XML))));
+for (const f of entry.meshes) {
   vfs.addBuffer(`assets/${f}`, new Uint8Array(fs.readFileSync(path.join(MODEL, "assets", f))));
 }
 
 const pose = DEFAULT_POSE.join(" ");
 const xml = `<mujoco model="microduck-scene">
-  <include file="${manifest.xml[0]}"/>
+  <include file="${ROBOT_XML}"/>
   <option timestep="0.005"/>
   <worldbody><geom name="floor" type="plane" size="0 0 0.05" pos="0 0 0"/></worldbody>
   <keyframe><key name="STAND" qpos="0 0 0.12 1 0 0 0 ${pose}" ctrl="${pose}"/></keyframe>

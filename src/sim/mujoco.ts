@@ -7,7 +7,7 @@
 // keeping both side by side under public/ is the one arrangement that works
 // identically in dev and in a static production build.
 
-import { assetUrl } from "../asset-url";
+import { assetUrl } from "../asset-url.ts";
 
 /** A MuJoCo array view. The WASM heap can grow and detach earlier views, so
  *  never cache these across a step — always re-read from model/data. */

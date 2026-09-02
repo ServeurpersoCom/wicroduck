@@ -1,7 +1,7 @@
 # In-browser training — plan
 
-Status: **M0 done** — the Train workspace runs a throughput harness. Nothing
-else is implemented yet.
+Status: **M0 and M1 done** — the Train workspace runs a throughput harness and
+a vectorized environment. No learner yet.
 
 Decisions taken (2026-09-02):
 
@@ -145,6 +145,34 @@ learn nothing. Each step below gates the next.
    learnable — the hello-world that proves the full loop.
 5. **Only then** the real sit→stand reward stack.
 
+### M1 result
+
+`npm run check:env` replays three controllers through the same `VecEnv` with
+the same seed, so they see identical reset poses:
+
+| Controller | Reward / step | Standing | Mean trunk z |
+| --- | ---: | ---: | ---: |
+| `alpha_stand` | **8.911** | 82.3% | 10.8 cm |
+| zero (hold reference pose) | 1.644 | 0.0% | 5.2 cm |
+| random | 1.247 | 0.0% | 5.2 cm |
+
+5.4× separation, every self-negating penalty came back negative, and the
+`standing_composite` product carries the largest share of the positive mass —
+which is what the reference intends. The ported reward stack recognises good
+behaviour.
+
+Node 24 strips TypeScript natively, so that check imports the real `src/`
+modules rather than a reimplementation — the whole point of the gate. It
+needed two concessions: explicit `.ts` import extensions repo-wide, and no
+TypeScript parameter properties (strip-only mode rejects them).
+
+One thing the replay turned up: **the exported ONNX policies have a fixed batch
+dimension of 1.** They were traced for single-robot deployment, so a vectorized
+replay has to call them once per environment. This costs the gate, not the
+trainer — M2's learner uses its own MLP with no such limit — but it rules out
+using an exported checkpoint directly as a fast rollout policy, which matters
+for M4 fine-tuning.
+
 ## 5. Checkpoint / resume
 
 First-class from M2. `TrainerState` covers policy + critic parameters, Adam
@@ -160,7 +188,7 @@ move between machines. Resume is also what makes overnight runs tolerable.
 | | Goal | Gate |
 | --- | --- | --- |
 | ~~M0~~ | ~~Throughput harness~~ | ✅ ~58 k steps/s — section 1 |
-| **M1** | Vectorized env in workers + the four seams | `alpha_stand` replay scores as expected |
+| ~~M1~~ | ~~Vectorized env + the four seams~~ | ✅ `alpha_stand` 8.91 vs 1.64 do-nothing — section 4 |
 | **M2** | PPO on CPU + checkpoint/resume | Toy task solved, then "hold the pose" |
 | **M3** | **Rollout inference first** (WASM SIMD GEMM), then the WebGPU learner — M0 says inference is 68% of the budget | Iteration time low enough to watch |
 | **M4** | Fine-tune from a shipped checkpoint | A visibly adapted policy |

@@ -6,9 +6,9 @@
 // bandwidth contention. So all workers are initialised first, then released
 // together by a single "run" broadcast.
 
-import { assetBase } from "../asset-url";
-import { CTRL_DT, DECIMATION } from "../sim/microduck";
-import type { BenchConfig, FromWorker, WorkerStats } from "./protocol";
+import { assetBase } from "../asset-url.ts";
+import { CTRL_DT, DECIMATION } from "../sim/microduck.ts";
+import type { BenchConfig, FromWorker, WorkerStats } from "./protocol.ts";
 
 export interface CellResult {
   robotXml: string;
