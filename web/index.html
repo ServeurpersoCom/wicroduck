@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wicroduck — Microduck in the browser</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🐤</text></svg>" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <h1>Wicroduck <span class="tag">stand-up demo</span></h1>
+        <p class="sub">
+          MuJoCo (WASM) + the shipped <code>alpha_stand</code> ONNX policy,
+          running entirely in this tab.
+        </p>
+      </header>
+
+      <main class="stage">
+        <canvas id="view"></canvas>
+
+        <div id="loader" class="loader">
+          <div class="spinner"></div>
+          <div id="loader-text">Starting…</div>
+          <div class="bar"><div id="loader-bar"></div></div>
+        </div>
+
+        <div id="error" class="error" hidden></div>
+
+        <dl id="telemetry" class="telemetry">
+          <div><dt>Phase</dt><dd id="t-phase">–</dd></div>
+          <div><dt>Uprightness</dt><dd id="t-gz">–</dd></div>
+          <div><dt>Trunk height</dt><dd id="t-height">–</dd></div>
+          <div><dt>Policy</dt><dd id="t-rate">–</dd></div>
+        </dl>
+      </main>
+
+      <footer class="controls">
+        <button id="btn-knock" class="primary" disabled>Knock down &amp; stand up</button>
+        <button id="btn-push" disabled>Push</button>
+        <button id="btn-stand" disabled>Stand up</button>
+        <button id="btn-reset" disabled>Reset</button>
+        <label class="toggle"><input type="checkbox" id="chk-loop" /> Auto-repeat</label>
+        <label class="toggle"><input type="checkbox" id="chk-collision" /> Collision geoms</label>
+      </footer>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
