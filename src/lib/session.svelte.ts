@@ -12,7 +12,8 @@ import { CTRL_DT, TRUNK_BODY } from "../sim/microduck";
 import { Viewer } from "../render/viewer";
 import { assetUrl } from "../asset-url";
 
-const POLICY_URL = assetUrl("policies/alpha_stand.onnx");
+export const POLICY_NAME = "alpha_stand.onnx";
+const POLICY_URL = assetUrl(`policies/${POLICY_NAME}`);
 
 /** Never advance more than this much sim time per frame: after a tab switch
  *  the elapsed time can be seconds, and catching up would freeze the page. */
@@ -56,6 +57,10 @@ export class Session {
     this.#showCollision = value;
     this.#viewer?.setCollisionVisible(value);
   }
+
+  /** False while another workspace is up front: the sim keeps stepping, but
+   *  there is no point drawing frames nobody can see. */
+  #rendering = true;
 
   #viewer: Viewer | null = null;
   #sim: Simulation | null = null;
@@ -146,11 +151,17 @@ export class Session {
       this.uprightPct = Math.round(Math.max(0, -t.gravityZ) * 100);
       this.heightCm = Math.round(t.height * 1000) / 10;
 
-      viewer.sync(sim.model, sim.data);
-      viewer.render();
+      if (this.#rendering) {
+        viewer.sync(sim.model, sim.data);
+        viewer.render();
+      }
       this.#frame = requestAnimationFrame(() => void tick());
     };
     void tick();
+  }
+
+  setRendering(value: boolean): void {
+    this.#rendering = value;
   }
 
   knockDown(): void {

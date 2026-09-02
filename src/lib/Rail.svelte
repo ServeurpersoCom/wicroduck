@@ -1,0 +1,114 @@
+<script lang="ts">
+  import { VIEWS, type View } from "./views";
+
+  let { view = $bindable() }: { view: View } = $props();
+</script>
+
+<nav class="rail">
+  <div class="brand">
+    <span class="mark">🐤</span>
+    <span class="name">
+      Wicroduck
+      <small>in-browser RL</small>
+    </span>
+  </div>
+
+  <ul>
+    {#each VIEWS as item (item.id)}
+      <li>
+        <button
+          class:active={view === item.id}
+          aria-current={view === item.id ? "page" : undefined}
+          onclick={() => (view = item.id)}
+        >
+          {#if item.id === "sim"}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 2.6 21 7.4v9.2L12 21.4 3 16.6V7.4z" />
+              <path d="M3 7.4 12 12m0 0 9-4.6M12 12v9.4" />
+            </svg>
+          {:else}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 20h18" />
+              <path d="M5 20V9m4.7 11V4m4.6 16v-7M19 20v-4" />
+            </svg>
+          {/if}
+          <span class="label">
+            {item.label}
+            <small>{item.hint}</small>
+          </span>
+        </button>
+      </li>
+    {/each}
+  </ul>
+
+  <a class="repo" href="https://github.com/pollen-robotics/microduck_rl" target="_blank" rel="noreferrer">
+    microduck_rl ↗
+  </a>
+</nav>
+
+<style>
+  .rail {
+    grid-area: rail;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px 10px;
+    background: var(--panel);
+    border-right: 1px solid var(--line);
+    min-width: 0;
+  }
+
+  .brand { display: flex; align-items: center; gap: 9px; padding: 4px 6px 14px; }
+  .mark {
+    display: grid; place-items: center;
+    width: 28px; height: 28px; flex: none;
+    font-size: 16px; line-height: 1;
+    background: var(--accent); border-radius: 7px;
+  }
+  .name {
+    display: flex; flex-direction: column; line-height: 1.2;
+    font-weight: 700; font-size: 13px; letter-spacing: -0.01em;
+  }
+  .name small { font-weight: 500; font-size: 10px; color: var(--muted); letter-spacing: 0.02em; }
+
+  ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+
+  button {
+    position: relative;
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; padding: 8px 10px;
+    font: inherit; font-size: 13px; text-align: left;
+    color: var(--muted); background: none;
+    border: 0; border-radius: 8px; cursor: pointer;
+  }
+  button:hover { background: var(--panel-hi); color: var(--ink); }
+  button.active { background: var(--panel-hi); color: var(--ink); }
+  /* Accent edge marks the active workspace without shouting. */
+  button.active::before {
+    content: ""; position: absolute; left: 0; top: 9px; bottom: 9px;
+    width: 2px; border-radius: 2px; background: var(--accent);
+  }
+
+  svg {
+    width: 17px; height: 17px; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 1.6;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .label { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; }
+  .label small { font-size: 10px; color: var(--muted); }
+  button.active .label small { color: var(--muted-hi); }
+
+  .repo {
+    margin-top: auto; padding: 8px 10px;
+    font-size: 11px; color: var(--muted); text-decoration: none;
+  }
+  .repo:hover { color: var(--ink); }
+
+  /* Narrow viewports: icons only. */
+  @media (max-width: 860px) {
+    .rail { padding: 12px 8px; }
+    .name, .label, .repo { display: none; }
+    button { justify-content: center; padding: 10px; }
+    .brand { justify-content: center; padding-bottom: 12px; }
+  }
+</style>

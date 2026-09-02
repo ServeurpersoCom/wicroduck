@@ -1,17 +1,33 @@
-/* Global shell only — component-scoped styles live in the .svelte files. */
+/* Design tokens and the page reset. Everything else is component-scoped. */
 :root {
   color-scheme: dark;
+
   --bg: #0b0d12;
-  --panel: #141821;
+  --viewport: #0f1116;
+  --panel: #12151d;
+  --panel-hi: #1a1f2b;
   --line: #232a38;
+  --line-hi: #38455c;
+
   --ink: #e7ecf5;
   --muted: #8d99ae;
+  --muted-hi: #a9b4c7;
+
   --accent: #ffc93c;
+  --accent-hi: #ffd668;
   --accent-ink: #241a00;
+
+  --ok: #4ade80;
+  --warn: #fbbf24;
+  --danger: #ff8f8f;
+
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 14px;
 }
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--ink); }
+body { background: var(--bg); color: var(--ink); overflow: hidden; }
 #app { height: 100%; }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

@@ -32,7 +32,18 @@ which populates `public/` (all gitignored):
 | `public/model/`   | `robot_allcollisions.xml` + the 38 STL meshes it references       | the `microduck_rl` submodule |
 | `public/policies/`| `alpha_stand.onnx`                                                | [`pollen-robotics/microduck-policies`](https://huggingface.co/pollen-robotics/microduck-policies) |
 
-## The demo screen
+## The app
+
+A studio-style shell: a left rail switches workspaces, an inspector on the
+right holds the controls for the active one, and a status bar carries live
+telemetry.
+
+- **Simulate** — the viewport, the stand-up demo. Working.
+- **Train** — a placeholder. See "Where it is going" below.
+
+The stage stays mounted when you switch away from Simulate: booting MuJoCo and
+the policy takes seconds, so the WebGL context is kept and only the drawing is
+paused (physics keeps stepping).
 
 | Control | What it does |
 | ------- | ------------ |
@@ -107,9 +118,14 @@ src/render/viewer.ts       generic MuJoCo-geoms -> three.js renderer
 
 src/lib/session.svelte.ts  boots the above, owns the fixed-timestep loop,
                            exposes it as reactive state — the Svelte boundary
-src/lib/Stage.svelte       canvas + loading/error overlays + telemetry
-src/lib/Controls.svelte    buttons and toggles
-src/App.svelte             layout
+src/lib/views.ts           the workspace list the rail renders
+src/lib/Rail.svelte        left nav
+src/lib/Stage.svelte       viewport canvas + loading/error overlays
+src/lib/Inspector.svelte   right panel: policy info, actions, options
+src/lib/StatusBar.svelte   live telemetry strip
+src/lib/TrainView.svelte   placeholder workspace
+src/App.svelte             shell layout (grid) + workspace switching
+src/style.css              design tokens + reset
 src/main.ts                mounts App
 
 scripts/prepare-assets.mjs vendors the runtimes, model and policies into public/

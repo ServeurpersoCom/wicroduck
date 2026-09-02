@@ -222,8 +222,12 @@ export class Viewer {
 
   private resize(): void {
     const box = this.canvas.parentElement ?? this.canvas;
-    const w = box.clientWidth || 1;
-    const h = box.clientHeight || 1;
+    const w = box.clientWidth;
+    const h = box.clientHeight;
+    // A hidden stage (another workspace up front) measures 0x0. Keep the last
+    // good size rather than collapsing the buffer and the camera aspect —
+    // the observer fires again with real numbers when it comes back.
+    if (w === 0 || h === 0) return;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
