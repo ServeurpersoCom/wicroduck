@@ -11,9 +11,9 @@ to put that pipeline — simulate, run, and eventually *train* — behind a URL.
 
 ## Where it is now
 
-**Step 1 is done: the stand-up demo.** [`web/`](web) runs MuJoCo compiled to
-WebAssembly, steps the real Microduck MJCF at 200 Hz, and drives it with the
-shipped `alpha_stand` ONNX policy at 50 Hz. Knock the duck over and watch it
+**Step 1 is done: the stand-up demo.** [`web/`](web) is a Svelte + Vite app
+that runs MuJoCo compiled to WebAssembly, steps the real Microduck MJCF at
+200 Hz, and drives it with the shipped `alpha_stand` ONNX policy at 50 Hz. Knock the duck over and watch it
 get itself back on its feet, rendered from the compiled model's own geometry.
 
 ```bash

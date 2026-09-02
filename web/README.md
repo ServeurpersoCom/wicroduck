@@ -5,6 +5,10 @@ inference and a three.js view, with no server in the loop. Right now it ships
 the **stand-up demo** — knock the duck over, watch the shipped `alpha_stand`
 policy get it back on its feet.
 
+Svelte 5 + Vite. The UI is a thin shell: everything under `src/sim/` and
+`src/render/` is framework-agnostic, and `src/lib/session.svelte.ts` is the
+only file that knows Svelte exists.
+
 ## Run it
 
 ```bash
@@ -93,17 +97,28 @@ can tell "made it" from "still trying". A deliberate knock-down inserts a
 ## Layout
 
 ```
-src/sim/mujoco.ts       MuJoCo WASM loader + typings for the bits used
-src/sim/scene.ts        MJCF assembly (floor, timestep, STAND keyframe) + compile
-src/sim/microduck.ts    robot + policy interface constants
-src/sim/policy.ts       ONNX inference
-src/sim/controller.ts   observation -> policy -> ctrl, and the state machine
-src/render/viewer.ts    generic MuJoCo-geoms -> three.js renderer
-src/main.ts             app shell, fixed-timestep loop, UI wiring
+src/sim/mujoco.ts          MuJoCo WASM loader + typings for the bits used
+src/sim/scene.ts           MJCF assembly (floor, timestep, STAND keyframe) + compile
+src/sim/microduck.ts       robot + policy interface constants
+src/sim/policy.ts          ONNX inference
+src/sim/controller.ts      observation -> policy -> ctrl, and the state machine
+src/render/viewer.ts       generic MuJoCo-geoms -> three.js renderer
+
+src/lib/session.svelte.ts  boots the above, owns the fixed-timestep loop,
+                           exposes it as reactive state — the Svelte boundary
+src/lib/Stage.svelte       canvas + loading/error overlays + telemetry
+src/lib/Controls.svelte    buttons and toggles
+src/App.svelte             layout
+src/main.ts                mounts App
 ```
 
-`viewer.ts` builds itself from the compiled model's geom arrays and knows
-nothing about the duck, so it renders any MJCF `scene.ts` hands it.
+Two deliberate lines in that list:
+
+- `viewer.ts` builds itself from the compiled model's geom arrays and knows
+  nothing about the duck, so it renders any MJCF `scene.ts` hands it.
+- `session.svelte.ts` is the only file with a `$state` in it. The sim can be
+  driven from a test, a worker or a different shell without dragging the UI
+  along — which is what `scripts/check-standup.mjs` already does.
 
 ## Known rough edges
 

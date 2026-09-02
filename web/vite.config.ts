@@ -1,6 +1,8 @@
-import { defineConfig } from "vite";
+import { defaultClientConditions, defineConfig } from "vite";
+import { svelte } from "@sveltejs/vite-plugin-svelte";
 
 export default defineConfig({
+  plugins: [svelte()],
   // Relative base so a production build also works when served from a
   // subpath (a Hugging Face Space, GitHub Pages, a static folder).
   base: "./",
@@ -9,7 +11,11 @@ export default defineConfig({
     // Without this, onnxruntime-web resolves to its "bundle" build, which
     // base64-inlines a 27 MB .wasm into the JS. The app serves that wasm from
     // public/vendor/ort/ instead (see scripts/prepare-assets.mjs).
-    conditions: ["onnxruntime-web-use-extern-wasm"],
+    //
+    // Setting `conditions` REPLACES Vite's defaults rather than adding to
+    // them, and dropping `browser` silently resolves packages to their server
+    // builds (Svelte pulled in node:async_hooks that way) — so spread them.
+    conditions: ["onnxruntime-web-use-extern-wasm", ...defaultClientConditions],
   },
   // The MuJoCo runtime is loaded as a static file from public/vendor/, so
   // keep the dep optimizer from trying to pre-bundle it.
