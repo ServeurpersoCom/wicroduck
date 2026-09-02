@@ -12,9 +12,9 @@
 
   // The stage stays mounted across workspace switches — booting MuJoCo and the
   // policy takes seconds, and tearing the WebGL context down to rebuild it
-  // would throw that away. Hidden, the physics keeps stepping but the frame is
-  // not drawn.
-  $effect(() => session.setRendering(view === "sim"));
+  // would throw that away. It is fully paused while hidden, though: a duck
+  // stepping in the background would skew the throughput harness next door.
+  $effect(() => session.setActive(view === "sim"));
 </script>
 
 <!-- The inspector column only exists for workspaces that have one; without

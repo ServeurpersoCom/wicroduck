@@ -58,14 +58,20 @@ export class Session {
     this.#viewer?.setCollisionVisible(value);
   }
 
-  /** False while another workspace is up front: the sim keeps stepping, but
-   *  there is no point drawing frames nobody can see. */
-  #rendering = true;
+  /**
+   * False while another workspace is up front. The loop then does nothing at
+   * all — not just skipping the draw. Stepping on in the background would burn
+   * a core and, worse, quietly bias the throughput harness measuring on the
+   * other tab-half.
+   */
+  #active = true;
 
   #viewer: Viewer | null = null;
   #sim: Simulation | null = null;
   #controller: MicroduckController | null = null;
   #frame = 0;
+  /** Set when the loop is resumed, so the first tick after it starts fresh. */
+  #resumeAt = 0;
   #repeatTimer: ReturnType<typeof setTimeout> | undefined;
   #disposed = false;
 
@@ -129,6 +135,17 @@ export class Session {
       if (!controller || !sim || !viewer) return;
 
       const now = performance.now() / 1000;
+      if (!this.#active) {
+        // Idle: keep the frame loop alive so the workspace can come back, but
+        // do no work and let no time accumulate.
+        last = now;
+        this.#frame = requestAnimationFrame(() => void tick());
+        return;
+      }
+      if (this.#resumeAt) {
+        last = this.#resumeAt;
+        this.#resumeAt = 0;
+      }
       const dt = Math.min(now - last, MAX_CATCHUP_S);
       last = now;
       accumulator += dt;
@@ -151,17 +168,17 @@ export class Session {
       this.uprightPct = Math.round(Math.max(0, -t.gravityZ) * 100);
       this.heightCm = Math.round(t.height * 1000) / 10;
 
-      if (this.#rendering) {
-        viewer.sync(sim.model, sim.data);
-        viewer.render();
-      }
+      viewer.sync(sim.model, sim.data);
+      viewer.render();
       this.#frame = requestAnimationFrame(() => void tick());
     };
     void tick();
   }
 
-  setRendering(value: boolean): void {
-    this.#rendering = value;
+  setActive(value: boolean): void {
+    this.#active = value;
+    // Resuming after a pause must not replay the elapsed wall time as sim time.
+    if (value) this.#resumeAt = performance.now() / 1000;
   }
 
   knockDown(): void {

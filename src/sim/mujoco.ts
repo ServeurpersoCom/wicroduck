@@ -76,12 +76,13 @@ export const GEOM = {
   ELLIPSOID: 4, CYLINDER: 5, BOX: 6, MESH: 7,
 } as const;
 
-const MUJOCO_URL = assetUrl("vendor/mujoco/mujoco.js");
-
 let cached: Promise<Mujoco> | null = null;
 
 export function loadMujoco(): Promise<Mujoco> {
-  cached ??= import(/* @vite-ignore */ MUJOCO_URL).then(
+  // Resolved on first call, never at module scope: a worker only learns the
+  // page's base URL from its init message, and this module is imported long
+  // before that lands.
+  cached ??= import(/* @vite-ignore */ assetUrl("vendor/mujoco/mujoco.js")).then(
     (mod: { default: () => Promise<Mujoco> }) => mod.default(),
   );
   return cached;

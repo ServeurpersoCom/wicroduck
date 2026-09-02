@@ -10,11 +10,17 @@
 import * as ort from "onnxruntime-web/wasm";
 import { assetUrl } from "../asset-url";
 
+// Configured on first load, never at module scope — see loadMujoco() for why.
 // Static hosting sends no COOP/COEP headers, so SharedArrayBuffer — and with
 // it multi-threaded ORT — is unavailable. One thread is plenty: the net is
 // ~800 KB and runs at 50 Hz.
-ort.env.wasm.wasmPaths = assetUrl("vendor/ort/");
-ort.env.wasm.numThreads = 1;
+let configured = false;
+function configureOrt(): void {
+  if (configured) return;
+  ort.env.wasm.wasmPaths = assetUrl("vendor/ort/");
+  ort.env.wasm.numThreads = 1;
+  configured = true;
+}
 
 export class Policy {
   private constructor(
@@ -24,6 +30,7 @@ export class Policy {
   ) {}
 
   static async load(url: string): Promise<Policy> {
+    configureOrt();
     const session = await ort.InferenceSession.create(url, { executionProviders: ["wasm"] });
     return new Policy(session, session.inputNames[0], session.outputNames[0]);
   }

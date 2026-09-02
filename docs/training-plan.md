@@ -1,6 +1,7 @@
 # In-browser training — plan
 
-Status: **design only, nothing implemented.** The Train workspace is a placeholder.
+Status: **M0 done** — the Train workspace runs a throughput harness. Nothing
+else is implemented yet.
 
 Decisions taken (2026-09-02):
 
@@ -9,40 +10,69 @@ Decisions taken (2026-09-02):
 - **Interactive loop first**, but checkpoint/resume is first-class from M2 so
   overnight runs work later without redesign.
 
-## 1. The budget
+## 1. The budget — measured
 
-Measured on an M-series Mac (6 performance cores), single thread, 32 envs
-round-robin per model:
+M0 ships a sweep in the Train workspace: each cell spins up a fresh worker
+pool, allocates its environments, and steps them all at once. Numbers below are
+from an M-series Mac (6 P-cores + 12 E-cores, `hardwareConcurrency` 18),
+`robot_walk-nv`, 16 envs per worker, 2 s windows, Simulate paused.
 
-| Model | geoms | `MjData` | control steps/s / thread |
-| --- | --- | --- | --- |
-| `robot_walk` | 76 | 13.1 MB | **13,700** |
-| `robot_groundcontact` | 82 | 13.3 MB | 10,100 |
-| `robot_allcollisions` (Simulate uses this) | 141 | 13.2 MB | 5,700 |
+| Workers | With policy forward | Physics only | Heap |
+| ---: | ---: | ---: | ---: |
+| 1 | 5,184 | 16,014 | 312 MB |
+| 2 | 10,485 | 31,818 | 623 MB |
+| 4 | 18,855 | 58,718 | 1,246 MB |
+| 8 | 32,193 | 102,578 | 2,493 MB |
+| 16 | **58,540** | 185,610 | 4,985 MB |
+| 18 | 58,392 | **193,499** | 5,608 MB |
 
-The reference standup recipe is 4096 envs × 24 steps × 15,000 iterations ≈
-**1.47 B control steps**, which takes 1–2 h on a CUDA box.
+Control steps/s. Scaling is near-linear to 16 workers and then flat — the E-cores
+stop contributing. Run-to-run variance is ±15%, so treat ~58 k as the working
+figure, not 58,392.
 
-Extrapolating `robot_walk` across ~6 threads and discounting for inference and
-messaging, call it **~40 k control steps/s aggregate**:
+**The plan assumed 40,000; the machine does ~58,000.** So:
 
 | Target | Steps | Wall clock |
 | --- | --- | --- |
-| Full reference run (15,000 iters) | 1.47 B | ~10 h |
-| Plausible convergence (2,000 iters) | 200 M | ~80 min |
-| Bootstrap / debug (500 iters) | 50 M | ~20 min |
+| Full reference recipe (15,000 iters) | 1.47 B | **7 h** |
+| Plausible convergence (2,000 iters) | 200 M | **56 min** |
+| Bootstrap / debug (500 iters) | 50 M | **14 min** |
 
-**Browser training is ~5–10× slower than the GPU box, not ~100×.** The duck is
-small enough (21 DoF, 76 geoms) that CPU MuJoCo stays competitive. This is the
-finding the whole plan rests on — re-measure it (M0) before trusting it.
+### What M0 overturned
 
-Two constraints that fell out of the benchmark:
+**Physics is not the bottleneck — inference is.** Physics alone sustains
+193,499 steps/s; adding a policy-shaped forward pass drops it to 58,392, so the
+naive scalar-JS MLP eats **70% of the budget**. That is ~3× of headroom sitting
+in a single function, and it re-prioritises M3: the rollout's inference path
+matters far more than the learner's.
 
-- **`MjData` is ~13 MB.** wasm32 caps at 2 GB, so ~150 envs/worker is a hard
-  ceiling. `<size memory="1M"/>` shrinks the arena a lot but costs ~25%
-  throughput — a knob, not a free win.
-- **Batch envs inside a worker.** 32 envs round-robin ran ~1.9× faster per step
-  than one env in a loop. Per-worker env count is a real tuning parameter.
+At the physics-only ceiling the full reference recipe would take 2.1 h — the
+CUDA box's own number. Inference will never be free, but WASM SIMD or a batched
+WebGPU pass should recover a good part of that gap.
+
+**Visual geoms cost memory, not time.** Every model now ships a `-nv` twin with
+`class="visual"` geoms and the meshes only they referenced removed —
+`robot_walk-nv` is 6 geoms and 4 meshes against 76 and 38. Because visual geoms
+are already `contype=0 conaffinity=0`, this buys only ~7% throughput, but it
+cuts per-worker heap from 746 MB to 312 MB and makes a pool start much faster.
+`prepare-assets` compiles both twins and asserts `nq`/`nv`/`nu`/`nbody` and
+total mass match, so a bad strip fails the build rather than the policy.
+
+**Memory, not CPU, caps the worker count.** 18 workers × 16 envs is 5.6 GB.
+`MjData` is ~14 MB regardless of model, so envs-per-worker is the expensive
+axis and worker count is the cheap one.
+
+**Bigger per-worker batches do not help.** 64 envs/worker measured slightly
+*worse* than 16 (4,949 vs 5,150 per thread). The earlier Node result suggesting
+otherwise was on the un-stripped model, where collision cost dominated.
+
+**Worker count saturates at the P-core count × ~2.7.** 16 and 18 workers tie.
+Defaulting the pool to `hardwareConcurrency` is fine but not free — the last
+few workers cost memory and return nothing.
+
+**Model choice barely moves throughput.** At 8 workers: `walk-nv` 31.6k,
+`groundcontact-nv` 28.0k, `allcollisions-nv` 23.6k. Worth picking the light one,
+not worth agonising over.
 
 ## 2. Architecture
 
@@ -129,16 +159,17 @@ move between machines. Resume is also what makes overnight runs tolerable.
 
 | | Goal | Gate |
 | --- | --- | --- |
-| **M0** | Throughput harness in the Train view: worker-count × envs/worker sweep, live steps/s | Real numbers replace section 1's estimates |
+| ~~M0~~ | ~~Throughput harness~~ | ✅ ~58 k steps/s — section 1 |
 | **M1** | Vectorized env in workers + the four seams | `alpha_stand` replay scores as expected |
 | **M2** | PPO on CPU + checkpoint/resume | Toy task solved, then "hold the pose" |
-| **M3** | WebGPU learner, SIMD rollout inference | Iteration time low enough to watch |
+| **M3** | **Rollout inference first** (WASM SIMD GEMM), then the WebGPU learner — M0 says inference is 68% of the budget | Iteration time low enough to watch |
 | **M4** | Fine-tune from a shipped checkpoint | A visibly adapted policy |
 | **M5** | From-scratch standup, ONNX export, round-trip into Simulate | A policy we trained, running in the Simulate tab |
 
 **M4 before M5 on purpose.** Fine-tuning converges in far fewer steps and is
-the most likely thing to actually work in a tab. If M3's numbers disappoint,
-M4 is the product and M5 becomes a stretch goal.
+the most likely thing to actually work in a tab. M0 came in above estimate, so
+M5 now looks reachable rather than aspirational — but the ordering stands,
+because a 56-minute run is still a bad debugging loop.
 
 ## 7. Known caveats
 
