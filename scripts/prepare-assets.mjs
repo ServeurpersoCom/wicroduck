@@ -1,4 +1,4 @@
-// Populates web/public/ with everything the browser app needs at runtime:
+// Populates public/ with everything the browser app needs at runtime:
 //
 //   vendor/   MuJoCo + onnxruntime WASM runtimes, copied out of node_modules so
 //             they are fetched as plain static files (no bundler in the loop)
@@ -12,10 +12,9 @@ import { fileURLToPath } from "node:url";
 import fs from "node:fs";
 import path from "node:path";
 
-const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const REPO = path.resolve(WEB, "..");
-const PUBLIC = path.join(WEB, "public");
-const MJCF_SRC = path.join(REPO, "microduck_rl/src/mjlab_microduck/robot/microduck");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PUBLIC = path.join(ROOT, "public");
+const MJCF_SRC = path.join(ROOT, "microduck_rl/src/mjlab_microduck/robot/microduck");
 
 // Policies live in the standalone Apache-2.0 mirror of the checkpoints that
 // ship with the robot; the sandbox Space serves the same files.

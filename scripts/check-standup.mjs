@@ -11,8 +11,8 @@ import { fileURLToPath } from "node:url";
 import loadMujoco from "@mujoco/mujoco";
 import * as ort from "onnxruntime-web";
 
-const WEB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const MODEL = path.join(WEB, "public/model/microduck");
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const MODEL = path.join(ROOT, "public/model/microduck");
 
 const JOINT_NAMES = [
   "left_hip_yaw", "left_hip_roll", "left_hip_pitch", "left_knee", "left_ankle",
@@ -54,7 +54,7 @@ const gyroAdr = model.sensor("imu_ang_vel").adr;
 const trunkId = mj.mj_name2id(model, mj.mjtObj.mjOBJ_BODY.value, "trunk_base");
 
 const session = await ort.InferenceSession.create(
-  path.join(WEB, "public/policies/alpha_stand.onnx"), { executionProviders: ["wasm"] },
+  path.join(ROOT, "public/policies/alpha_stand.onnx"), { executionProviders: ["wasm"] },
 );
 console.log("policy io:", session.inputNames, "->", session.outputNames);
 
