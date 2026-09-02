@@ -42,7 +42,7 @@ async function init(baseUrl: string, cfg: EnvInit): Promise<void> {
     model,
     standKey,
     spec: standupSpec({
-      tumbleFraction: cfg.tumbleFraction,
+      resetMix: cfg.resetMix,
       episodeLengthS: cfg.episodeLengthS,
     }),
     count: cfg.envs,

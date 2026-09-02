@@ -59,8 +59,12 @@ Drag to orbit, scroll to zoom; the camera follows the trunk.
 ## Checking it without a browser
 
 ```bash
+npm run check           # everything below, in order
 npm run check:standup   # the deployment loop: does the duck get up?
 npm run check:env       # the training env: does the reward stack rank behaviour?
+npm run check:grad      # finite-difference the hand-written backprop
+npm run check:ppo       # can PPO solve a toy task at all?
+npm run check:trainer   # can it learn on the robot, and does a checkpoint restore?
 npm run typecheck
 ```
 
@@ -77,8 +81,13 @@ until you know that doing nothing scores 1.6. Unlike `check:standup` this one
 imports the real `src/` modules (Node 24 strips the types), so it tests the
 code the trainer will run.
 
-Both are far faster to iterate on than a browser, which is why the training
-work leans on them.
+`check:grad`, `check:ppo` and `check:trainer` gate the learner in that order —
+each one is cheap and the next is only meaningful if it passes. Hand-rolled
+gradients fail *silently*: the loss still goes down, just to the wrong place,
+and you find out an hour into a run.
+
+All of them are far faster to iterate on than a browser, which is why the
+training work leans on them.
 
 ## How the loop works
 
@@ -161,8 +170,8 @@ for the measured budget, the architecture and the sim2real seams.
 1. ~~In-browser simulation + inference of a trained policy~~ ✅
 2. ~~M0: throughput harness~~ ✅ — ~58k control steps/s on an 18-thread laptop
 3. ~~M1: vectorized environment + the sim2real seams~~ ✅
-4. M2: PPO on CPU, checkpoint/resume
-5. M3: fast rollout inference, WebGPU learner
+4. ~~M2: PPO on CPU, checkpoint/resume~~ ✅
+5. M3: fast rollout inference (M0 measured it at ~70% of the step budget), WebGPU learner
 6. M4: fine-tune a shipped checkpoint; M5: from-scratch, export to ONNX
 
 ## Known rough edges

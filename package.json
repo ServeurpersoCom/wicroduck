@@ -13,7 +13,11 @@
     "preview": "vite preview",
     "typecheck": "svelte-check --tsconfig ./tsconfig.json",
     "check:env": "node scripts/check-env.ts",
-    "check:standup": "node scripts/check-standup.mjs"
+    "check:standup": "node scripts/check-standup.mjs",
+    "check:grad": "node scripts/check-grad.ts",
+    "check:ppo": "node scripts/check-ppo.ts",
+    "check:trainer": "node scripts/check-trainer.ts",
+    "check": "node scripts/check-node-compat.mjs && npm run typecheck && npm run check:grad && npm run check:ppo && npm run check:env && npm run check:trainer"
   },
   "dependencies": {
     "@mujoco/mujoco": "^3.12.0",

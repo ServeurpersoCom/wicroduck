@@ -46,16 +46,47 @@ function sit(ctx: EnvContext): void {
   }
 }
 
+/** Relative weights for how an episode starts. */
+export interface ResetMix {
+  /** Already standing at the reference pose — the easy case. */
+  stand?: number;
+  /** Folded into the seated equilibrium the sit policy converges to. */
+  sit?: number;
+  /** Dropped tilted past horizontal, landing however physics decides. */
+  tumble?: number;
+}
+
 export interface StandupOptions {
-  /** Share of episodes that start from a tumble rather than a sit. */
-  tumbleFraction?: number;
+  resetMix?: ResetMix;
   episodeLengthS?: number;
+  name?: string;
+}
+
+/**
+ * "Hold the pose": start standing and stay there.
+ *
+ * The bootstrap task — trivially learnable, and the first thing to run a new
+ * learner against, because a policy that cannot hold a stable equilibrium it
+ * was handed will certainly not discover how to reach one.
+ */
+export function holdPoseSpec(options: StandupOptions = {}): EnvSpec {
+  return standupSpec({
+    name: "hold_pose",
+    resetMix: { stand: 1 },
+    episodeLengthS: options.episodeLengthS ?? 3.0,
+    ...options,
+  });
 }
 
 export function standupSpec(options: StandupOptions = {}): EnvSpec {
-  const tumbleFraction = options.tumbleFraction ?? 0.5;
+  const mix = options.resetMix ?? { sit: 1, tumble: 1 };
+  const stand = mix.stand ?? 0;
+  const sitW = mix.sit ?? 0;
+  const tumbleW = mix.tumble ?? 0;
+  const total = stand + sitW + tumbleW;
+  if (total <= 0) throw new Error("resetMix must have a positive weight somewhere");
   return {
-    name: "standup",
+    name: options.name ?? "standup",
     joints: JOINT_NAMES,
     rewards: standupRewards(),
     terminations: standupTerminations(),
@@ -66,8 +97,10 @@ export function standupSpec(options: StandupOptions = {}): EnvSpec {
       ctx.mujoco.mj_resetDataKeyframe(ctx.model, ctx.data, standKey);
       // ctrl starts at the reference pose so an un-acted first step is neutral.
       for (let j = 0; j < DEFAULT_POSE.length; j++) ctx.data.ctrl[j] = DEFAULT_POSE[j];
-      if (rng() < tumbleFraction) tumble(ctx, rng);
-      else sit(ctx);
+      const pick = rng() * total;
+      if (pick < stand) return; // the keyframe already IS the standing pose
+      if (pick < stand + sitW) sit(ctx);
+      else tumble(ctx, rng);
     },
   };
 }

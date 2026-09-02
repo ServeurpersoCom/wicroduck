@@ -1,0 +1,144 @@
+// M2 gate: can PPO learn anything on the real robot?
+//
+//   node scripts/check-trainer.ts [iterations]
+//
+// The task is "hold the pose": start at the standing keyframe and stay there.
+// Deliberately the easiest thing on the robot — a learner that cannot hold a
+// stable equilibrium it was handed will certainly not discover how to reach
+// one, and finding that out here costs a minute instead of an hour.
+//
+// Also round-trips a checkpoint, because a resume that silently differs from
+// an uninterrupted run is a bug you only notice as "training got worse
+// overnight".
+
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { loadModelFromDisk } from "../src/train/model-loader.ts";
+import { holdPoseSpec } from "../src/train/env/standup.ts";
+import { DEFAULT_TRAINER, Trainer, type TrainerConfig } from "../src/train/trainer.ts";
+import { DEFAULT_PPO } from "../src/train/ppo.ts";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const MODEL_DIR = path.join(ROOT, "public/model/microduck");
+const ROBOT_XML = "robot_allcollisions-nv.xml";
+// 150 keeps the gate ~45s and lands well clear of the thresholds. At 40 it
+// passed by a single percentage point, which is a flaky test, not a gate.
+const ITERS = Number(process.argv[2] ?? 150);
+
+const { mujoco, model, standKey } = await loadModelFromDisk(MODEL_DIR, ROBOT_XML, fs, path);
+
+const config: TrainerConfig = {
+  ...DEFAULT_TRAINER,
+  envs: 32,
+  stepsPerIter: 24,
+  seed: 7,
+  // Smaller than the reference 512/256/128: scalar-JS backprop is the cost
+  // here, and this gate is about whether the learner works, not final quality.
+  hidden: [128, 64],
+  // Actions are joint-angle offsets in radians. The reference starts at
+  // std 1.0, but that is ~57 degrees of noise on every joint every control
+  // step: the duck is shaken apart and never experiences standing, so there is
+  // nothing for PPO to reinforce. 0.05 rad (~3 degrees) explores without
+  // destroying the behaviour being learned.
+  initStd: 0.1,
+  ppo: {
+    ...DEFAULT_PPO,
+    minibatches: 4,
+    epochs: 4,
+    // No entropy bonus: at this noise scale it inflates log-std faster than
+    // the task can shrink it, and exploration is already set by initStd.
+    entropyCoef: 0,
+    // For a fixed-sigma Gaussian, KL grows as (delta-mean / sigma)^2 — so a
+    // small sigma makes KL enormous for policy changes that are tiny in
+    // radians. The reference 0.01 was tuned at sigma 1.0; at 0.1 it pins the
+    // adaptive learning rate to its floor and freezes the run.
+    desiredKl: 0.05,
+  },
+};
+
+const trainer = new Trainer({ mujoco, model, standKey, spec: holdPoseSpec(), config });
+console.log(
+  `hold-pose: ${config.envs} envs x ${config.stepsPerIter} steps, ` +
+  `net ${config.hidden.join("/")}, ${trainer.ac.actor.paramCount + trainer.ac.critic.paramCount} params`,
+);
+
+const EVAL_STEPS = 150; // one full 3 s episode
+const before = trainer.evaluate(EVAL_STEPS);
+console.log(
+  `before training: reward/step ${before.rewardPerStep.toFixed(3)}, ` +
+  `standing ${(before.standingFraction * 100).toFixed(1)}%`,
+);
+
+let firstKl = 0;
+let lastStats: ReturnType<Trainer["iterate"]> | null = null;
+const t0 = Date.now();
+for (let i = 0; i < ITERS; i++) {
+  lastStats = trainer.iterate();
+  if (i === 0) firstKl = lastStats.initialKl;
+  if (i % 10 === 0 || i === ITERS - 1) {
+    const s = lastStats;
+    console.log(
+      `iter ${String(s.iteration).padStart(3)}  reward/step ${s.rewardPerStep.toFixed(3)}  ` +
+      `standing ${(s.standingFraction * 100).toFixed(1).padStart(5)}%  ` +
+      `entropy ${s.entropy.toFixed(2)}  kl ${s.approxKl.toFixed(4)}  ` +
+      `lr ${s.lr.toExponential(1)}  ${(s.rolloutMs + s.updateMs).toFixed(0)}ms`,
+    );
+  }
+}
+const elapsed = (Date.now() - t0) / 1000;
+const after = trainer.evaluate(EVAL_STEPS);
+console.log(
+  `\nafter ${ITERS} iterations (${elapsed.toFixed(1)}s, ${trainer.totalSteps.toLocaleString()} steps): ` +
+  `reward/step ${before.rewardPerStep.toFixed(3)} -> ${after.rewardPerStep.toFixed(3)}, ` +
+  `standing ${(before.standingFraction * 100).toFixed(1)}% -> ${(after.standingFraction * 100).toFixed(1)}%`,
+);
+console.log(`first-minibatch KL (must be ~0): ${firstKl.toExponential(2)}`);
+
+// ── Checkpoint round trip ─────────────────────────────────────────────────
+// A restored trainer must produce the SAME next iteration as the original
+// would have. Anything less means resume silently changes the run.
+const ckpt = JSON.parse(JSON.stringify(trainer.checkpoint()));
+const evalAfterSave = trainer.evaluate(20);
+
+const restored = new Trainer({ mujoco, model, standKey, spec: holdPoseSpec(), config });
+restored.restore(ckpt);
+const evalRestored = restored.evaluate(20);
+
+const rewardDrift = Math.abs(evalAfterSave.rewardPerStep - evalRestored.rewardPerStep);
+console.log(
+  `checkpoint round trip: iteration ${ckpt.iteration}, ` +
+  `eval reward ${evalAfterSave.rewardPerStep.toFixed(4)} vs ${evalRestored.rewardPerStep.toFixed(4)} ` +
+  `(drift ${rewardDrift.toExponential(2)})`,
+);
+
+const failures: string[] = [];
+if (!(after.rewardPerStep > before.rewardPerStep * 1.15)) {
+  failures.push(
+    `reward did not improve 15% (${before.rewardPerStep.toFixed(3)} -> ${after.rewardPerStep.toFixed(3)})`,
+  );
+}
+// Not "solves balancing" — 192k steps is ~1/500th of what the reference recipe
+// spends on stand-up, so the bar is that the learner demonstrably moves the
+// policy, not that it masters the task.
+if (!(after.standingFraction > 0.35)) {
+  failures.push(`policy holds the pose only ${(after.standingFraction * 100).toFixed(1)}% of steps`);
+}
+if (!Number.isFinite(lastStats?.policyLoss ?? NaN)) failures.push("policy loss went non-finite");
+// The very first minibatch of the very first epoch evaluates the exact policy
+// that collected the data, so its KL must be ~0. See UpdateStats.initialKl.
+if (!(firstKl < 1e-3)) {
+  failures.push(`first-minibatch KL ${firstKl.toExponential(2)} is not ~0; rollout and update disagree`);
+}
+// The evaluation is deterministic, so a correct restore must reproduce it
+// exactly bar float ordering.
+if (!(rewardDrift < 1e-4)) failures.push(`restored policy differs from the saved one (${rewardDrift})`);
+if (restored.iteration !== trainer.iteration) failures.push("restored iteration counter mismatch");
+
+console.log();
+if (failures.length) {
+  console.log("FAILED:\n" + failures.map((f) => `  - ${f}`).join("\n"));
+  process.exit(1);
+}
+console.log("PASSED: PPO learns to hold the pose, and a checkpoint restores exactly.");

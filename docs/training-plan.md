@@ -1,7 +1,7 @@
 # In-browser training — plan
 
-Status: **M0 and M1 done** — the Train workspace runs a throughput harness and
-a vectorized environment. No learner yet.
+Status: **M0, M1 and M2 done** — the Train workspace runs a throughput harness,
+a vectorized environment, and PPO with checkpoint/resume.
 
 Decisions taken (2026-09-02):
 
@@ -173,15 +173,64 @@ trainer — M2's learner uses its own MLP with no such limit — but it rules ou
 using an exported checkpoint directly as a fast rollout policy, which matters
 for M4 fine-tuning.
 
+### M2 result
+
+Four headless gates, all in `npm run check`:
+
+| Gate | Result |
+| --- | --- |
+| `check:grad` — finite-difference the backprop | norm-relative error 1.5e-5 |
+| `check:ppo` — solve a toy reach task | mean distance 2.248 → 0.093 |
+| `check:trainer` — learn to hold the pose | reward 3.64 → 5.72, standing 22.7% → 51.3% |
+| `check:trainer` — checkpoint round trip | drift 0.00e+0 (exact) |
+
+**"Hold the pose" is not a freebie.** With `ctrl` frozen at the reference pose,
+the duck holds for ~0.5 s and then topples: STAND is not a passive equilibrium.
+The reference's `STAND_Z = 0.115` was *measured under a policy actively
+balancing*, not at rest. So the bootstrap task is genuine active balance, and
+the untrained baseline is ~22% standing rather than 100%. This is exactly the
+check AGENTS.md prescribes before training, and it would have been an
+expensive assumption to carry into a long run.
+
+### Three bugs that only a gate would have caught
+
+**The observation normalizer must not update between rollout and update.**
+PPO's importance ratio assumes the stored log-probs came from the same function
+the first minibatch evaluates. Re-scaling the inputs in between produced a
+phantom KL of 0.82 on iteration one with frozen weights, which drove the
+adaptive learning rate to its floor and froze the run — while every individual
+component looked correct. `UpdateStats.initialKl` now asserts the invariant
+directly: it is ~0 (3.9e-14) when rollout and update agree.
+
+**Environments must be staggered.** Created together, all of them reset on the
+same step forever, so each rollout sampled one narrow slice of episode time
+instead of the state distribution. The metrics oscillated with the episode
+period and looked like wild instability. `VecEnv.stagger()` fixes it — and
+`evaluate()` has to re-stagger afterwards, because an aligned evaluation reset
+silently re-introduces it.
+
+**KL scales as (Δmean / σ)².** Actions are joint offsets in radians, so the
+reference `init_std = 1.0` is ~57° of noise per joint per control step: the
+duck is shaken apart and never experiences standing, leaving PPO nothing to
+reinforce. But at a sane σ = 0.1 the reference `desired_kl = 0.01` — tuned at
+σ = 1.0 — pins the learning rate to its floor instead. Both constants had to
+move together.
+
 ## 5. Checkpoint / resume
 
-First-class from M2. `TrainerState` covers policy + critic parameters, Adam
-moments, obs-normalizer running mean/var, iteration counter, curriculum state,
-and RNG streams — anything whose loss would make a resumed run differ from an
-uninterrupted one.
+Implemented in M2. The checkpoint covers policy + critic parameters, Adam
+moments, obs-normalizer running mean/var, iteration counter and RNG state —
+anything whose loss would make a resumed run differ from an uninterrupted one.
+`check:trainer` asserts a restored trainer evaluates bit-identically.
 
-Persist to OPFS, survive a reload, and support download/upload so a run can
-move between machines. Resume is also what makes overnight runs tolerable.
+One subtlety worth keeping: the RNG's state lives in a field, not a closure.
+`VecEnv` and `ActorCritic` capture the generator *function* at construction, so
+swapping in a fresh closure on restore would leave them drawing from the old
+stream and the resume would silently diverge.
+
+Persisted to OPFS (megabytes of weights, and the API is a plain file handle),
+autosaving every 25 iterations so a run survives a reload. Download/upload for
+moving a run between machines is still to do.
 
 ## 6. Milestones
 
@@ -189,7 +238,7 @@ move between machines. Resume is also what makes overnight runs tolerable.
 | --- | --- | --- |
 | ~~M0~~ | ~~Throughput harness~~ | ✅ ~58 k steps/s — section 1 |
 | ~~M1~~ | ~~Vectorized env + the four seams~~ | ✅ `alpha_stand` 8.91 vs 1.64 do-nothing — section 4 |
-| **M2** | PPO on CPU + checkpoint/resume | Toy task solved, then "hold the pose" |
+| ~~M2~~ | ~~PPO on CPU + checkpoint/resume~~ | ✅ toy task solved, hold-pose learned — section 4 |
 | **M3** | **Rollout inference first** (WASM SIMD GEMM), then the WebGPU learner — M0 says inference is 68% of the budget | Iteration time low enough to watch |
 | **M4** | Fine-tune from a shipped checkpoint | A visibly adapted policy |
 | **M5** | From-scratch standup, ONNX export, round-trip into Simulate | A policy we trained, running in the Simulate tab |

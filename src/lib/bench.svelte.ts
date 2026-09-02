@@ -102,7 +102,7 @@ export class Bench {
         workers: this.envWorkers,
         envs: this.envsPerEnvWorker,
         robotXml: "robot_allcollisions-nv.xml",
-        tumbleFraction: 0.5,
+        resetMix: { sit: 1, tumble: 1 },
         episodeLengthS: 6,
       });
       this.envStats = await this.#pool.rollout(steps);

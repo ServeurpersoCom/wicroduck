@@ -80,7 +80,7 @@ export class VecEnv {
    *  is a wasm boundary crossing, and one per env per step is not free. */
   readonly #zOut: Float32Array;
   readonly #uprightOut: Float32Array;
-  #rng: () => number;
+  readonly #rng: () => number;
 
   /** Accumulated per-term reward since the last resetBreakdown(). */
   readonly breakdown: RewardBreakdown = {};
@@ -123,7 +123,22 @@ export class VecEnv {
     this.#uprightOut = new Float32Array(opts.count);
     for (const t of opts.spec.rewards) this.breakdown[t.name] = 0;
 
-    for (let e = 0; e < opts.count; e++) this.resetEnv(e);
+    this.resetAll();
+  }
+
+  /**
+   * Desynchronize the episode clocks.
+   *
+   * Environments created (or reset) together would otherwise finish together
+   * forever, so every rollout samples one narrow slice of episode time instead
+   * of the state distribution. The batch stops being representative and the
+   * metrics oscillate with the episode period rather than tracking learning —
+   * which is exactly what it looked like the first time this was missing.
+   */
+  stagger(): void {
+    for (let e = 0; e < this.count; e++) {
+      this.#stepCount[e] = Math.floor(this.#rng() * this.#maxSteps);
+    }
   }
 
   get maxSteps(): number {
@@ -154,8 +169,14 @@ export class VecEnv {
     this.#writeObs(envId, new Float32Array(NUM_JOINTS));
   }
 
-  resetAll(): Float32Array {
+  /**
+   * Reset every environment. Staggers afterwards by default — an aligned reset
+   * is only wanted for evaluation, where every environment should be measured
+   * over the same window.
+   */
+  resetAll(options: { stagger?: boolean } = {}): Float32Array {
     for (let e = 0; e < this.count; e++) this.resetEnv(e);
+    if (options.stagger ?? true) this.stagger();
     return this.#obs;
   }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Bench, PLAN_ESTIMATE } from "./bench.svelte";
+  import TrainingPanel from "./TrainingPanel.svelte";
 
   const bench = new Bench();
 
@@ -131,6 +132,8 @@
       </tbody>
     </table>
   {/if}
+
+  <TrainingPanel />
 
   <section class="env">
     <header class="sub">

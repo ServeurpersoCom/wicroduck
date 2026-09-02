@@ -86,7 +86,7 @@ export class EnvPool {
               init: {
                 robotXml: config.robotXml,
                 envs: config.envs,
-                tumbleFraction: config.tumbleFraction,
+                resetMix: config.resetMix,
                 episodeLengthS: config.episodeLengthS,
                 seed: baseSeed + i,
               },

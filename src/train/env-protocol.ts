@@ -6,7 +6,8 @@ export interface EnvInit {
   envs: number;
   /** Seeded per worker so a pool is reproducible as a whole. */
   seed: number;
-  tumbleFraction: number;
+  /** Reset distribution weights: stand / sit / tumble. */
+  resetMix: { stand?: number; sit?: number; tumble?: number };
   episodeLengthS: number;
 }
 
