@@ -12,6 +12,7 @@ import { holdPoseSpec, standupSpec } from "./env/standup.ts";
 import { Trainer, type Checkpoint } from "./trainer.ts";
 import { loadCheckpoint, saveCheckpoint } from "./checkpoint-store.ts";
 import { loadKernels } from "./kernels/index.ts";
+import { PoolRollout } from "./rollout-pool.ts";
 import type { FromTrainWorker, ToTrainWorker, TrainInit } from "./train-protocol.ts";
 
 let trainer: Trainer | null = null;
@@ -23,8 +24,6 @@ const post = (msg: FromTrainWorker) => self.postMessage(msg);
 async function init(baseUrl: string, options: TrainInit): Promise<void> {
   setAssetBase(baseUrl);
   cfg = options;
-  const assets = await loadModelAssets(() => {}, [options.robotXml]);
-  const { model, standKey } = compileScene(assets, { robotXml: options.robotXml });
   const spec = options.task === "hold_pose" ? holdPoseSpec() : standupSpec();
   // Vite turns this into a static asset URL. If it fails to load — an engine
   // without SIMD, a stripped deployment — the nets fall back to JavaScript
@@ -33,8 +32,28 @@ async function init(baseUrl: string, options: TrainInit): Promise<void> {
     .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
     .then((bytes) => loadKernels(bytes))
     .catch(() => null);
+  // With more than one rollout worker the environments move out of this
+  // thread entirely and this one only learns. Physics is the majority of an
+  // iteration and the only part that parallelises, so this is where the
+  // remaining speed is.
+  let rollout: PoolRollout | undefined;
+  let mujoco, model, standKey;
+  if (options.rolloutWorkers > 1) {
+    rollout = await PoolRollout.create({
+      workers: options.rolloutWorkers,
+      envsPerWorker: options.config.envs,
+      robotXml: options.robotXml,
+      task: options.task,
+      hidden: options.config.hidden,
+      baseSeed: options.config.seed,
+    });
+  } else {
+    const assets = await loadModelAssets(() => {}, [options.robotXml]);
+    ({ model, standKey } = compileScene(assets, { robotXml: options.robotXml }));
+    mujoco = assets.mujoco;
+  }
   trainer = new Trainer({
-    mujoco: assets.mujoco, model, standKey, spec, config: options.config, kernels,
+    mujoco, model, standKey, spec, config: options.config, kernels, rollout,
   });
 
   let resumedAt = 0;
@@ -50,6 +69,8 @@ async function init(baseUrl: string, options: TrainInit): Promise<void> {
     resumedAt,
     params: trainer.ac.actor.paramCount + trainer.ac.critic.paramCount,
     simd: trainer.usesSimd,
+    envs: trainer.rollout.envs,
+    rolloutLabel: trainer.rollout.label,
   });
 }
 
@@ -75,7 +96,7 @@ async function run(iterations: number): Promise<void> {
   }
   running = true;
   for (let i = 0; i < iterations && running; i++) {
-    const stats = trainer.iterate();
+    const stats = await trainer.iterate();
     post({ type: "stats", stats });
     if (cfg.autosaveEvery > 0 && stats.iteration % cfg.autosaveEvery === 0) {
       await save();
@@ -97,6 +118,7 @@ self.onmessage = (e: MessageEvent<ToTrainWorker>) => {
     else if (msg.type === "save") void save(msg.name).catch(fail);
     else if (msg.type === "dispose") {
       running = false;
+      void trainer?.rollout.dispose();
       trainer = null;
       self.close();
     }

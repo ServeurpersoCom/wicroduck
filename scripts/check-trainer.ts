@@ -63,7 +63,7 @@ let firstKl = 0;
 let lastStats: ReturnType<Trainer["iterate"]> | null = null;
 const t0 = Date.now();
 for (let i = 0; i < ITERS; i++) {
-  lastStats = trainer.iterate();
+  lastStats = await trainer.iterate();
   if (i === 0) firstKl = lastStats.initialKl;
   if (i % 10 === 0 || i === ITERS - 1) {
     const s = lastStats;

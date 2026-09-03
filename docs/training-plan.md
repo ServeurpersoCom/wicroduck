@@ -248,10 +248,20 @@ sums in the same order. Then SIMD kernels in WebAssembly (`src/train/kernels/`)
 for another 4.3×; `check:kernels` asserts they match the JavaScript reference
 to ~2e-7 relative and the JavaScript path stays as both reference and fallback.
 
-**The bottleneck has flipped.** Physics is now 25% of an iteration at the
-reference net and **74%** at the small one, while the learner is 4–6%. The next
-speedup is not a faster learner — it is more rollout workers feeding one, which
-is exactly the split M0's numbers pointed at and M2 deliberately deferred.
+**The bottleneck flipped.** Physics became 25% of an iteration at the reference
+net and **74%** at the small one, while the learner dropped to 4–6%. So the
+next speedup was not a faster learner but more rollout workers feeding one —
+now built (`RolloutSource`, with an in-thread and a worker-pool
+implementation). Measured in Chrome at 32 envs per worker, small net:
+
+| Rollout workers | Envs | Iteration | Control steps/s | Rollout / update |
+| ---: | ---: | ---: | ---: | ---: |
+| 1 (in-thread) | 32 | 125 ms | 6,144 | 82% / 18% |
+| 2 | 64 | 161 ms | 9,540 | 73% / 27% |
+| 4 | 128 | 209 ms | 14,699 | 57% / 43% |
+
+2.4× throughput at 4 workers, and the split is heading back toward the
+learner — which is now the thing to watch again.
 
 Two things broke on the way, both from the kernel heap being a bump allocator
 that never frees: `#ensureBatch` reallocated whenever the batch size changed,

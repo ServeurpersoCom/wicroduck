@@ -19,7 +19,11 @@ export interface HistoryPoint {
 
 export class TrainingSession {
   task = $state<"hold_pose" | "standup">("hold_pose");
+  /** Environments PER rollout worker. */
   envs = $state(32);
+  /** 1 keeps environments in the learner's thread; more spreads the physics
+   *  out, which is where the remaining speed is. */
+  rolloutWorkers = $state(Math.min(4, Math.max(1, Math.floor((navigator.hardwareConcurrency || 4) / 2))));
   stepsPerIter = $state(24);
   iterations = $state(250);
   /** Smaller than the reference 512/256/128: scalar-JS backprop is the cost. */
@@ -30,6 +34,8 @@ export class TrainingSession {
   iteration = $state(0);
   totalSteps = $state(0);
   paramCount = $state(0);
+  totalEnvs = $state(0);
+  rolloutLabel = $state("");
   resumedAt = $state(0);
   simd = $state(false);
   last = $state<IterationStats | null>(null);
@@ -90,6 +96,8 @@ export class TrainingSession {
       if (msg.type === "ready") {
         this.paramCount = msg.params;
         this.simd = msg.simd;
+        this.totalEnvs = msg.envs;
+        this.rolloutLabel = msg.rolloutLabel;
         this.resumedAt = msg.resumedAt;
         this.iteration = msg.resumedAt;
         this.status = "running";
@@ -128,6 +136,7 @@ export class TrainingSession {
       baseUrl: assetBase(),
       init: {
         robotXml: "robot_allcollisions-nv.xml",
+        rolloutWorkers: this.rolloutWorkers,
         task: this.task,
         config: this.#config(),
         autosaveEvery: 25,

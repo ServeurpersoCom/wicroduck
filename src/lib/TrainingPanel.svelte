@@ -81,7 +81,13 @@
       </select>
     </label>
     <label>
-      Envs
+      Rollout workers
+      <select bind:value={s.rolloutWorkers} disabled={busy}>
+        {#each [1, 2, 4, 6, 8] as n (n)}<option value={n}>{n}</option>{/each}
+      </select>
+    </label>
+    <label>
+      Envs / worker
       <select bind:value={s.envs} disabled={busy}>
         {#each [16, 32, 64, 128] as n (n)}<option value={n}>{n}</option>{/each}
       </select>
@@ -115,6 +121,7 @@
     {@const l = s.last}
     <dl class="stats">
       <div><dt>Iteration</dt><dd>{l.iteration}</dd></div>
+      <div><dt>Envs</dt><dd>{s.totalEnvs}</dd></div>
       <div><dt>Steps</dt><dd>{num(l.totalSteps)}</dd></div>
       <!-- Rollout numbers come from the EXPLORING policy, so they read lower
            than the policy is: the deterministic mean does noticeably better.
@@ -175,6 +182,7 @@
     {/if}
     {#if s.paramCount}
       · {s.simd ? "SIMD kernels" : "JavaScript fallback"}
+      {#if s.rolloutLabel}· {s.rolloutLabel}{/if}
     {/if}
   </p>
 </section>

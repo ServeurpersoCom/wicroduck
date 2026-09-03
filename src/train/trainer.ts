@@ -15,6 +15,8 @@ import { ActorCritic, HIDDEN } from "./ac-policy.ts";
 import { Adam } from "./nn.ts";
 import { DEFAULT_PPO, makeBuffer, ppoUpdate, type PpoConfig, type RolloutBuffer, type UpdateStats } from "./ppo.ts";
 import { VecEnv, type EnvSpec, type ExplorationHints } from "./env/vec-env.ts";
+import { LocalRollout } from "./rollout-local.ts";
+import type { RolloutSource } from "./rollout-source.ts";
 import type { Kernels } from "./kernels/index.ts";
 import { STAND_Z } from "./env/rewards.ts";
 
@@ -103,7 +105,11 @@ class SeededRng {
 
 export class Trainer {
   readonly ac: ActorCritic;
-  readonly env: VecEnv;
+  /** Present only when the environments run in this thread. The pool variant
+   *  keeps them in workers, so diagnostics that need MuJoCo state are
+   *  in-thread only. */
+  readonly env: VecEnv | null;
+  readonly rollout: RolloutSource;
   readonly config: TrainerConfig;
 
   /** What the task asked for, after any explicit override. Reported so a run's
@@ -115,31 +121,43 @@ export class Trainer {
   readonly #rng: SeededRng;
   #iteration = 0;
   #totalSteps = 0;
-  /** Undiscounted return accumulating per environment, reset on episode end. */
-  #episodeReturn: Float32Array;
   readonly #specName: string;
   readonly #ppo: PpoConfig;
 
   constructor(opts: {
-    mujoco: Mujoco;
-    model: MjModel;
-    standKey: number;
+    /** Required unless `rollout` is supplied — those own their own models. */
+    mujoco?: Mujoco;
+    model?: MjModel;
+    standKey?: number;
     spec: EnvSpec;
     config: TrainerConfig;
     /** SIMD kernels for the nets; null falls back to the JS path. */
     kernels?: Kernels | null;
+    /** Where rollouts come from. Defaults to a VecEnv in this thread, which
+     *  requires mujoco/model/standKey; a pool supplies its own. */
+    rollout?: RolloutSource;
   }) {
     this.config = opts.config;
     this.#specName = opts.spec.name;
     this.#rng = new SeededRng(opts.config.seed);
-    this.env = new VecEnv({
-      mujoco: opts.mujoco,
-      model: opts.model,
-      standKey: opts.standKey,
-      spec: opts.spec,
-      count: opts.config.envs,
-      rng: this.#rng.next,
-    });
+    if (opts.rollout) {
+      this.env = null;
+    } else {
+      if (!opts.mujoco || !opts.model || opts.standKey === undefined) {
+        throw new Error("Trainer needs a model when no rollout source is given");
+      }
+      this.env = new VecEnv({
+        mujoco: opts.mujoco,
+        model: opts.model,
+        standKey: opts.standKey,
+        spec: opts.spec,
+        count: opts.config.envs,
+        rng: this.#rng.next,
+      });
+    }
+    // A pool decides its own environment count; the config's is only the
+    // in-thread default.
+    const envs = opts.rollout?.envs ?? opts.config.envs;
     this.exploration = { ...opts.spec.exploration, ...opts.config.exploration };
     this.ac = new ActorCritic(
       OBS_SIZE,
@@ -157,11 +175,12 @@ export class Trainer {
     };
     this.#buf = makeBuffer(
       opts.config.stepsPerIter,
-      opts.config.envs,
+      envs,
       this.ac.obsDim,
       this.ac.actDim,
     );
-    this.#episodeReturn = new Float32Array(opts.config.envs);
+    this.rollout = opts.rollout
+      ?? new LocalRollout(this.env as VecEnv, this.ac, this.#rng.next);
   }
 
   get iteration(): number {
@@ -177,45 +196,16 @@ export class Trainer {
   }
 
   /** One rollout + one PPO update. */
-  iterate(): IterationStats {
-    const { envs, stepsPerIter } = this.config;
+  async iterate(): Promise<IterationStats> {
+    const { stepsPerIter } = this.config;
     const buf = this.#buf;
-    const obsDim = this.ac.obsDim, actDim = this.ac.actDim;
 
-    let rewardSum = 0;
-    let standingSteps = 0;
-    let finishedEpisodes = 0;
-    let finishedReturn = 0;
-    const nonFiniteBefore = this.env.nonFiniteSteps;
-    this.env.resetBreakdown();
+    // The pool runs inference in its workers, so it needs this iteration's
+    // weights before it starts. In-thread this is a no-op.
+    await this.rollout.syncPolicy(this.ac);
 
     const rolloutStart = performance.now();
-    for (let t = 0; t < stepsPerIter; t++) {
-      const obs = this.env.observations;
-      buf.obs.set(obs, t * envs * obsDim);
-      const { actions, logProbs, values } = this.ac.act(obs, envs, this.#rng.next);
-      buf.actions.set(actions, t * envs * actDim);
-      buf.logProbs.set(logProbs, t * envs);
-      buf.values.set(values, t * envs);
-
-      const { reward, done, timeout } = this.env.step(actions);
-      buf.rewards.set(reward, t * envs);
-      buf.dones.set(done, t * envs);
-      buf.timeouts.set(timeout, t * envs);
-
-      const z = this.env.trunkZ, upright = this.env.uprightness;
-      for (let e = 0; e < envs; e++) {
-        rewardSum += reward[e];
-        this.#episodeReturn[e] += reward[e];
-        if (z[e] > STAND_Z - 0.02 && upright[e] > 0.85) standingSteps++;
-        if (done[e]) {
-          finishedEpisodes++;
-          finishedReturn += this.#episodeReturn[e];
-          this.#episodeReturn[e] = 0;
-        }
-      }
-    }
-    buf.lastValues.set(this.ac.value(this.env.observations, envs).subarray(0, envs));
+    const collected = await this.rollout.collect(buf, stepsPerIter);
     const rolloutMs = performance.now() - rolloutStart;
 
     const updateStart = performance.now();
@@ -227,20 +217,21 @@ export class Trainer {
     // same function the first minibatch evaluates; re-scaling the inputs in
     // between breaks that, and the resulting phantom KL drives the adaptive
     // learning rate to its floor and freezes the run.
-    this.ac.normalizer.update(buf.obs, stepsPerIter * envs);
+    this.ac.normalizer.update(buf.obs, stepsPerIter * buf.envs);
 
     this.#iteration++;
-    const total = stepsPerIter * envs;
-    this.#totalSteps += total;
+    this.#totalSteps += collected.steps;
 
     return {
       ...stats,
       iteration: this.#iteration,
-      rewardPerStep: rewardSum / total,
-      episodeReturn: finishedEpisodes > 0 ? finishedReturn / finishedEpisodes : 0,
-      episodes: finishedEpisodes,
-      standingFraction: standingSteps / total,
-      nonFiniteSteps: this.env.nonFiniteSteps - nonFiniteBefore,
+      rewardPerStep: collected.rewardSum / collected.steps,
+      episodeReturn: collected.finishedEpisodes > 0
+        ? collected.finishedReturn / collected.finishedEpisodes
+        : 0,
+      episodes: collected.finishedEpisodes,
+      standingFraction: collected.standingSteps / collected.steps,
+      nonFiniteSteps: collected.nonFiniteSteps,
       totalSteps: this.#totalSteps,
       rolloutMs,
       updateMs,
@@ -261,20 +252,22 @@ export class Trainer {
    * phase-locked would poison every rollout that follows.
    */
   evaluate(steps: number): { rewardPerStep: number; standingFraction: number } {
-    const envs = this.config.envs;
-    this.env.resetAll({ stagger: false });
+    const env = this.env;
+    if (!env) throw new Error("evaluate() needs in-thread environments");
+    const envs = env.count;
+    env.resetAll({ stagger: false });
     let rewardSum = 0, standingSteps = 0;
     for (let t = 0; t < steps; t++) {
-      const mean = this.ac.actMean(this.env.observations, envs);
-      const { reward } = this.env.step(mean);
-      const z = this.env.trunkZ, upright = this.env.uprightness;
+      const mean = this.ac.actMean(env.observations, envs);
+      const { reward } = env.step(mean);
+      const z = env.trunkZ, upright = env.uprightness;
       for (let e = 0; e < envs; e++) {
         rewardSum += reward[e];
         if (z[e] > STAND_Z - 0.02 && upright[e] > 0.85) standingSteps++;
       }
     }
     const total = steps * envs;
-    this.env.resetAll();
+    env.resetAll();
     return { rewardPerStep: rewardSum / total, standingFraction: standingSteps / total };
   }
 
