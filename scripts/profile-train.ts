@@ -124,7 +124,7 @@ for (const { label, hidden } of NETS) {
   console.log(`  ${"".padStart(27)}${iter.toFixed(1).padStart(7)} ms  per iteration`);
   console.log(
     `    update internals: forward ${last.fwdMs.toFixed(0)} ms, ` +
-    `backward+clip+adam ${last.bwdMs.toFixed(0)} ms, ` +
+    `backward ${last.bwdMs.toFixed(0)} ms, clip+adam ${last.optMs.toFixed(0)} ms, ` +
     `other ${last.otherMs.toFixed(0)} ms  (clip fraction ${(last.clipFraction * 100).toFixed(0)}%)`,
   );
   console.log(`    isolated forward, one minibatch: ${fwdSolo.toFixed(2)} ms x ${EPOCHS * MINIBATCHES}`);

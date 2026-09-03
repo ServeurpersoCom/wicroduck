@@ -125,6 +125,10 @@ export interface UpdateStats {
    *  gradient is zero — and the clip fraction decides how many those are. */
   fwdMs: number;
   bwdMs: number;
+  /** Gradient clipping and the Adam step. Separate from bwdMs because both
+   *  sweep every parameter once per MINIBATCH, which is 20 full passes over
+   *  the net per iteration and not obviously small. */
+  optMs: number;
   otherMs: number;
 }
 
@@ -166,7 +170,7 @@ export function ppoUpdate(
   const stats: UpdateStats = {
     initialKl: 0, policyLoss: 0, valueLoss: 0, entropy: 0,
     approxKl: 0, clipFraction: 0, gradNorm: 0, lr: opt.lr,
-    fwdMs: 0, bwdMs: 0, otherMs: 0,
+    fwdMs: 0, bwdMs: 0, optMs: 0, otherMs: 0,
   };
   const updateStart = performance.now();
   let updates = 0;
@@ -254,9 +258,11 @@ export function ppoUpdate(
       const tBwd = performance.now();
       ac.actor.backward(gMean, mbSize);
       ac.critic.backward(gValue, mbSize);
+      const tOpt = performance.now();
+      stats.bwdMs += tOpt - tBwd;
       stats.gradNorm = ac.clipGrads(cfg.maxGradNorm);
       opt.step(ac.tensors());
-      stats.bwdMs += performance.now() - tBwd;
+      stats.optMs += performance.now() - tOpt;
 
       stats.policyLoss += pLoss / mbSize;
       stats.valueLoss += vLoss / mbSize;
@@ -280,6 +286,6 @@ export function ppoUpdate(
   stats.clipFraction /= updates;
   stats.entropy = ac.entropy;
   stats.lr = opt.lr;
-  stats.otherMs = performance.now() - updateStart - stats.fwdMs - stats.bwdMs;
+  stats.otherMs = performance.now() - updateStart - stats.fwdMs - stats.bwdMs - stats.optMs;
   return stats;
 }
