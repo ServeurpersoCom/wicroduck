@@ -28,9 +28,9 @@
     {
       state: "ready",
       title: "Show it a motion",
-      body: "Write joint angles over time as JSON — or have an AI agent write them — and train a policy to perform it while balancing.",
-      action: "Open Files",
-      view: "files" as View,
+      body: "Keyframe a pose over time — or have an AI agent write the file — and train a policy to perform it while balancing.",
+      action: "Open Motion maker",
+      view: "motion" as View,
     },
     {
       state: "soon",
@@ -105,15 +105,15 @@
   const motionSteps = [
     {
       n: 1,
-      title: "Write the motion",
-      where: "docs/motion-format.md",
-      body: "Joint angles at a few points in time, as JSON. Only the joints you name are yours; the rest hold the reference pose. Hand the spec to an AI agent with \u201cmake the duck take a slow bow\u201d and it can write the file — a wrong angle is visible, which a wrong reward is not.",
+      title: "Keyframe it, or have it written",
+      where: "the Motion maker",
+      body: "Drag the joint sliders at a few points on the timeline and the keyframes appear as you go. Only the joints you touch become part of the motion; the rest hold the reference pose. Or hand docs/motion-format.md to an AI agent with \u201cmake the duck take a slow bow\u201d and paste what it writes into the JSON panel — a wrong angle is visible, which a wrong reward is not.",
       code: null,
     },
     {
       n: 2,
-      title: "Upload it and look at it",
-      where: "Files \u2192 Upload motion, then Simulate",
+      title: "Watch it before you train on it",
+      where: "Preview \u2194 Physics",
       body: "Preview places the joints exactly as written, with no physics — the view for checking it looks the way you meant. Switch to physics playback and it will fall over: open-loop, this robot topples in about a second whatever you ask of it. That is the task, not a bug in your file.",
       code: null,
     },

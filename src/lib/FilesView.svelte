@@ -218,9 +218,9 @@
       <h2>Motions</h2>
       <p>
         A motion is a small JSON file of joint angles over time — the input to
-        a tracking task, and the thing an AI agent can write for you from
-        <code>docs/motion-format.md</code>. The built-ins are always here;
-        download one to use as a starting point.
+        a tracking task. Author one in the <strong>Motion maker</strong>, or
+        have an AI agent write it from <code>docs/motion-format.md</code>. The
+        built-ins are always here; download one as a starting point.
       </p>
     </div>
     <label class="upload">

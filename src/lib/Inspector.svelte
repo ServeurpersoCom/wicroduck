@@ -35,62 +35,6 @@
   </section>
 
   <section>
-    <h2>Motion</h2>
-    <label class="picker">
-      <select
-        value={session.activeMotion ?? ""}
-        disabled={!session.ready}
-        onchange={(e) => void session.selectMotion(e.currentTarget.value || null)}
-      >
-        <option value="">None — policy driving</option>
-        {#each session.motions as m (m.id)}
-          <option value={m.id}>{m.name}{m.source === "builtin" ? "" : " (yours)"}</option>
-        {/each}
-      </select>
-    </label>
-    {#if session.motionError}
-      <p class="err">{session.motionError}</p>
-    {:else if session.activeMotion}
-      <div class="row">
-        <button
-          class="primary"
-          onclick={() => (session.motionPlaying ? session.pauseMotion() : session.playMotion())}
-        >{session.motionPlaying ? "Pause" : "Play"}</button>
-        <button onclick={() => session.rewindMotion()}>Rewind</button>
-      </div>
-      <input
-        class="scrub"
-        type="range" min="0" max="1" step="0.002"
-        value={session.motionPhase}
-        oninput={(e) => session.seekMotion(Number(e.currentTarget.value))}
-        aria-label="Scrub the motion"
-      />
-      <label class="picker">
-        <select bind:value={session.motionMode}>
-          <option value="preview">Preview — no physics</option>
-          <option value="physics">Physics — open loop</option>
-        </select>
-      </label>
-      <p class="hint">
-        {#if session.motionMode === "preview"}
-          The joints are placed exactly as the file says, {session.motionDuration.toFixed(1)} s
-          long. This is the view for checking a motion looks right.
-        {:else}
-          The same angles, against gravity, with nothing correcting for where
-          the duck ends up. Expect it to fall — driven open-loop this robot
-          topples in about a second whatever you ask of it. Train a policy on
-          the motion to make it survivable.
-        {/if}
-      </p>
-    {:else}
-      <p class="hint">
-        Play an authored motion in the viewport. Write your own against
-        <code>docs/motion-format.md</code> and upload it in Files.
-      </p>
-    {/if}
-  </section>
-
-  <section>
     <h2>Actions</h2>
     <div class="stack">
       <button class="primary" disabled={!session.ready} onclick={() => session.knockDown()}>
@@ -154,9 +98,6 @@
   .picker select:disabled { opacity: 0.5; }
   .hint, .err { margin: 0; font-size: 10px; line-height: 1.5; color: var(--muted); }
   .err { color: var(--danger); }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; }
-
-  .scrub { width: 100%; accent-color: var(--accent); cursor: pointer; }
 
   .stack { display: flex; flex-direction: column; gap: 6px; }
   .row { display: flex; gap: 6px; }

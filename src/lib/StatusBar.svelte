@@ -1,27 +1,37 @@
 <script lang="ts">
   import { PHASE_LABEL, type Session } from "./session.svelte";
+  import type { MakerSession } from "./maker.svelte";
+  import type { View } from "./views.ts";
 
-  const { session }: { session: Session } = $props();
+  const { session, maker, view }: { session: Session; maker: MakerSession; view: View } =
+    $props();
+
+  // One bar, two workspaces that own the viewport. Showing the Simulate
+  // session's telemetry while the Motion maker is up front would be reporting
+  // on a duck nobody is looking at.
+  const inMaker = $derived(view === "motion");
 </script>
 
 <footer class="status">
+{#if inMaker}
+  <span class="phase" data-phase={maker.ready ? (maker.playing ? "standing" : "settling") : "loading"}>
+    <i></i>{maker.started ? (maker.ready ? (maker.playing ? "Playing" : "Paused") : "Loading") : "Idle"}
+  </span>
+  {#if maker.started}
+    <span><b>Motion</b>{maker.draft.name || "untitled"}</span>
+    <span><b>Time</b>{maker.time.toFixed(2)} / {maker.duration.toFixed(2)} s</span>
+    <span><b>Keys</b>{maker.draft.keys.length}</span>
+    <span><b>Trunk</b>{maker.trunkCm.toFixed(1)} cm</span>
+  {/if}
+  <span class="spacer"></span>
+  <span class="dim">{maker.mode === "preview" ? "Kinematic preview" : "Open-loop physics"}</span>
+{:else}
   <!-- data-phase drives the dot colour; "loading" leaves it neutral rather
        than showing the initial "standing" green before the sim exists. -->
-  <span class="phase" data-phase={session.ready && !session.motionName ? session.phase : "loading"}>
-    <!-- While a motion is selected the policy is not driving, so the phase
-         machine's answer would be a stale "Standing". -->
-    <i></i>{session.started
-      ? session.ready
-        ? session.motionName
-          ? (session.motionPlaying ? "Playing" : "Paused")
-          : PHASE_LABEL[session.phase]
-        : "Loading"
-      : "Idle"}
+  <span class="phase" data-phase={session.ready ? session.phase : "loading"}>
+    <i></i>{session.started ? (session.ready ? PHASE_LABEL[session.phase] : "Loading") : "Idle"}
   </span>
   {#if session.started}
-    {#if session.motionName}
-      <span><b>Motion</b>{session.motionName} · {Math.round(session.motionPhase * 100)}%</span>
-    {/if}
     <span><b>Upright</b>{session.uprightPct}%</span>
     <span><b>Trunk</b>{session.heightCm.toFixed(1)} cm</span>
     <span><b>Policy</b>{session.policyHz} Hz</span>
@@ -33,6 +43,7 @@
        run trained here, and saying otherwise would be a lie in the one place
        that is always on screen. -->
   <span class="dim">MuJoCo WASM · {session.activePolicyLabel}</span>
+{/if}
 </footer>
 
 <style>

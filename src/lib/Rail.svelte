@@ -31,6 +31,13 @@
               <path d="M12 2.6 21 7.4v9.2L12 21.4 3 16.6V7.4z" />
               <path d="M3 7.4 12 12m0 0 9-4.6M12 12v9.4" />
             </svg>
+          {:else if item.id === "motion"}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 12h4m4 0h2m4 0h4" />
+              <path d="M9 9.5 11.5 12 9 14.5 6.5 12z" />
+              <path d="M17 9.5 19.5 12 17 14.5 14.5 12z" />
+              <path d="M4 5v14" />
+            </svg>
           {:else if item.id === "train"}
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 20h18" />

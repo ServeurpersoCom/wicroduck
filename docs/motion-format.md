@@ -106,9 +106,10 @@ Measured on the model, not guessed. The duck faces **−X**.
 
 ## What happens to the file
 
-- **Preview** plays it kinematically in Simulate — the joints follow the file
-  exactly, no physics. This is the view for checking that a motion looks the
-  way you meant.
+- **Preview** plays it kinematically in the Motion maker — the joints follow
+  the file exactly, no physics. This is the view for checking that a motion
+  looks the way you meant. Paste your JSON into the panel at the bottom of that
+  workspace to load it without saving a file first.
 - **Physics playback** runs the same angles through the actuators against
   gravity. Expect it to fall over. That is not a bug in your file: with the
   controls driven open-loop this robot topples in about a second no matter what
@@ -171,5 +172,6 @@ knee positive and the right knee negative.
 ---
 
 Built-in motions live in `src/motion/library.ts` and are worth reading as
-further examples. `node scripts/check-motion.ts` validates the format, the
-interpolator and the reward stack together.
+further examples; the Motion maker can open any of them as a starting point.
+`node scripts/check-motion.ts` validates the format, the interpolator and the
+reward stack together.

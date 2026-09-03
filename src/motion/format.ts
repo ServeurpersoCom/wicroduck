@@ -128,6 +128,9 @@ export function parseMotion(input: string | unknown): Motion {
   if (!Array.isArray(driven) || driven.some((j) => typeof j !== "string")) {
     fail("joints must be an array of joint names");
   }
+  if (driven.length === 0) {
+    fail('"joints" is empty — a motion has to drive at least one joint');
+  }
   const slot: number[] = [];
   const seen = new Set<string>();
   for (const name of driven as string[]) {

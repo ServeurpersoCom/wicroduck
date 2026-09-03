@@ -42,17 +42,26 @@ telemetry.
   teaching the duck a new skill.
 - **Simulate** — the viewport. Driven by the shipped `alpha_stand` checkpoint
   or by any policy you trained here.
-- **Train** — the throughput harness, the vectorized environment, and PPO.
-  Save a run under a name to replay it in Simulate or continue it later.
-- **Files** — the saved runs. Checkpoints live in the browser's private
-  filesystem rather than a folder you can browse, so they get a manager:
-  download, upload, rename, delete.
+- **Motion maker** — a timeline over the robot's fourteen joints. Scrub, drag
+  a slider, and the keyframe appears; play it back kinematically to check it
+  looks right, or against physics to watch it fall. Paste in JSON an AI agent
+  wrote from [`docs/motion-format.md`](docs/motion-format.md), or open a
+  built-in as a starting point.
+- **Train** — PPO over the vectorized environment, on either of the two
+  balance tasks or on any motion. Save a run under a name to replay it in
+  Simulate or continue it later.
+- **Files** — the saved runs and the motion library. Both live in the
+  browser's private filesystem rather than a folder you can browse, so they
+  get a manager: download, upload, rename, delete.
+- **Debug** — the throughput harness and a bare environment rollout.
 
 The simulator loads on the first visit to Simulate rather than at startup —
 it is a 21 MB download and nobody reading the Guide asked for it. After that
 the stage stays mounted across workspace switches, because booting MuJoCo and
 the policy takes seconds; it is fully paused while hidden, so a duck stepping
-in the background cannot skew the throughput harness next door.
+in the background cannot skew the throughput harness next door. The Motion
+maker boots a second model of its own: the two workspaces want the robot in
+different states at the same moment, and one `MjData` cannot be both.
 
 | Control | What it does |
 | ------- | ------------ |

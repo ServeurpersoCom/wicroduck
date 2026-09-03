@@ -2,23 +2,28 @@
   import Rail from "./lib/Rail.svelte";
   import Stage from "./lib/Stage.svelte";
   import Inspector from "./lib/Inspector.svelte";
+  import MotionMakerView from "./lib/MotionMakerView.svelte";
+  import MotionInspector from "./lib/MotionInspector.svelte";
   import StatusBar from "./lib/StatusBar.svelte";
   import TrainView from "./lib/TrainView.svelte";
   import GuideView from "./lib/GuideView.svelte";
   import FilesView from "./lib/FilesView.svelte";
   import DebugView from "./lib/DebugView.svelte";
   import { Session } from "./lib/session.svelte";
+  import { MakerSession } from "./lib/maker.svelte";
   import type { View } from "./lib/views.ts";
 
   const TITLES: Record<View, { title: string; crumb: string }> = {
     guide: { title: "Guide", crumb: "What this is and how to use it" },
     sim: { title: "Simulate", crumb: "Microduck · stand-up policy" },
+    motion: { title: "Motion maker", crumb: "Keyframe a pose over time" },
     train: { title: "Train", crumb: "Microduck · PPO" },
     files: { title: "Files", crumb: "Checkpoints saved in this browser" },
     debug: { title: "Debug", crumb: "Throughput and environment instruments" },
   };
 
   const session = new Session();
+  const maker = new MakerSession();
   let view = $state<View>("guide");
 
   // The stage mounts on the first visit to Simulate and stays mounted after —
@@ -27,6 +32,11 @@
   // happen twice. It is fully paused while hidden: a duck stepping in the
   // background would skew the throughput harness next door.
   let simMounted = $state(false);
+  // The Motion maker boots a SECOND model. The two workspaces want the robot
+  // in different states at the same moment — one running a policy, one holding
+  // a pose being edited — and one MjData cannot be both. Only one ever steps:
+  // whichever is not up front is fully paused.
+  let makerMounted = $state(false);
   $effect(() => {
     if (view === "sim") {
       simMounted = true;
@@ -34,13 +44,20 @@
       // should still show up in the policy picker.
       if (session.ready) void session.refreshPolicies();
     }
+    if (view === "motion") {
+      makerMounted = true;
+      // A motion uploaded in Files, or saved from here earlier, should be in
+      // the Open list without a reload.
+      if (maker.ready) void maker.refreshLibrary();
+    }
     session.setActive(view === "sim");
+    maker.setActive(view === "motion");
   });
 </script>
 
 <!-- The inspector column only exists for workspaces that have one; without
      this the Train view would sit off-centre next to an empty gutter. -->
-<div class="shell" class:no-aside={view !== "sim"}>
+<div class="shell" class:no-aside={view !== "sim" && view !== "motion"}>
   <Rail bind:view />
 
   <header class="topbar">
@@ -54,8 +71,15 @@
       <Stage {session} />
     </div>
   {/if}
+  {#if makerMounted}
+    <div class="main maker-main" class:hidden={view !== "motion"}>
+      <MotionMakerView session={maker} />
+    </div>
+  {/if}
   {#if view === "sim"}
     <Inspector {session} />
+  {:else if view === "motion"}
+    <MotionInspector session={maker} />
   {:else if view === "train"}
     <TrainView />
   {:else if view === "files"}
@@ -66,7 +90,7 @@
     <GuideView go={(v) => (view = v)} />
   {/if}
 
-  <StatusBar {session} />
+  <StatusBar {session} {maker} {view} />
 </div>
 
 <style>
@@ -99,6 +123,8 @@
   .crumb { font-size: 11px; color: var(--muted); }
 
   .main { grid-area: main; display: grid; min-height: 0; min-width: 0; }
+  /* The maker lays out its own rows, so it must not be stretched into one. */
+  .main.maker-main { display: contents; }
   .main.hidden { display: none; }
 
   @media (max-width: 1040px) {

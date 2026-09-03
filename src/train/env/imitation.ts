@@ -21,6 +21,7 @@
 
 import { CMD_OFFSET, CTRL_DT, NUM_JOINTS } from "../../sim/microduck.ts";
 import { MotionSampler } from "../../motion/sampler.ts";
+import { GroundReference } from "../../motion/ground.ts";
 import { drivenIndices, type Motion } from "../../motion/format.ts";
 import type { RewardTerm, StepState, TerminationTerm } from "./rewards.ts";
 import type { EnvContext, ObsPipeline } from "./seams.ts";
@@ -82,21 +83,8 @@ export class MotionRef {
   prepare(ctx: EnvContext, standKey: number): void {
     if (this.#heights) return;
     const { mujoco, model, data, joints } = ctx;
-    const floor = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM.value, "floor");
-    const lowest = (): number => {
-      let min = Infinity;
-      for (let g = 0; g < model.ngeom; g++) {
-        if (g === floor) continue;
-        const z = data.geom_xpos[g * 3 + 2];
-        if (z < min) min = z;
-      }
-      return min;
-    };
-
-    mujoco.mj_resetDataKeyframe(model, data, standKey);
-    mujoco.mj_forward(model, data);
-    const standZ = data.qpos[2];
-    const standLow = lowest();
+    // The same rule the editor's viewport uses — see GroundReference.
+    const ground = new GroundReference(mujoco, model, data, standKey);
 
     const steps = Math.max(1, Math.round(this.sampler.duration / CTRL_DT)) + 1;
     const heights = new Float64Array(steps);
@@ -106,7 +94,7 @@ export class MotionRef {
       this.sampler.poseAt(s * CTRL_DT, scratch);
       for (let j = 0; j < NUM_JOINTS; j++) data.qpos[joints.qpos[j]] = scratch[j];
       mujoco.mj_forward(model, data);
-      heights[s] = standZ + (standLow - lowest());
+      heights[s] = ground.heightFor(data);
     }
     this.#heights = heights;
     this.#lastT = NaN; // the memo held a scratch sample, not a real one
