@@ -11,7 +11,7 @@ import { compileScene, loadModelAssets } from "../sim/scene.ts";
 import { NUM_JOINTS, OBS_SIZE } from "../sim/microduck.ts";
 import { ActorCritic } from "./ac-policy.ts";
 import { VecEnv } from "./env/vec-env.ts";
-import { holdPoseSpec, standupSpec } from "./env/standup.ts";
+import { buildSpec } from "./env/tasks.ts";
 import { STAND_Z } from "./env/rewards.ts";
 import { loadKernels, type Kernels } from "./kernels/index.ts";
 import type { FromRolloutWorker, RolloutChunk, RolloutInit, ToRolloutWorker } from "./rollout-protocol.ts";
@@ -40,9 +40,7 @@ async function init(baseUrl: string, cfg: RolloutInit): Promise<void> {
   rng = mulberry32(cfg.seed);
   const assets = await loadModelAssets(() => {}, [cfg.robotXml]);
   const { model, standKey } = compileScene(assets, { robotXml: cfg.robotXml });
-  const spec = cfg.task === "hold_pose"
-    ? holdPoseSpec({ episodeLengthS: cfg.episodeLengthS })
-    : standupSpec({ episodeLengthS: cfg.episodeLengthS });
+  const spec = buildSpec(cfg.task, { episodeLengthS: cfg.episodeLengthS });
   env = new VecEnv({
     mujoco: assets.mujoco, model, standKey, spec, count: cfg.envs, rng,
   });

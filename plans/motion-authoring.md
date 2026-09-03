@@ -1,6 +1,21 @@
 # Motion authoring — teach a skill by showing it
 
-Status: **idea, not scheduled.** Parked until M3–M5 land.
+Status: **stage 1 is built.** The motion file, the interpolator, the imitation
+reward and the viewport preview all ship — see `docs/motion-format.md`,
+`src/motion/` and `src/train/env/imitation.ts`. Stage 2 (the keyframe editor)
+is still an idea.
+
+Two things stage 1 taught, worth knowing before stage 2:
+
+- **Every motion is a balance problem.** Driven open-loop the duck topples in
+  about a second whatever it is asked to do — even a head-only nod — because
+  standing is an active behaviour on this robot, not a pose. The editor's
+  physics playback will therefore always end in a fall, and that has to be
+  presented as expected rather than as a verdict on the motion.
+- **Score only the joints the file drives.** Averaging tracking error over all
+  fourteen buries a one-joint nod under thirteen terms that match regardless.
+
+---
 
 Today a new skill means writing a reward function in TypeScript and then
 fighting the policy for it. That is the hard way, and the reference project's

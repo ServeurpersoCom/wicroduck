@@ -16,6 +16,7 @@ import type { CollectStats, RolloutSource } from "./rollout-source.ts";
 import type {
   FromRolloutWorker, RolloutChunk, RolloutInit, ToRolloutWorker,
 } from "./rollout-protocol.ts";
+import type { TaskSpec } from "./env/tasks.ts";
 
 const INIT_TIMEOUT_MS = 120_000;
 const STEP_TIMEOUT_MS = 300_000;
@@ -61,7 +62,7 @@ export interface PoolOptions {
   /** Environments PER WORKER. */
   envsPerWorker: number;
   robotXml: string;
-  task: "hold_pose" | "standup";
+  task: TaskSpec;
   hidden: readonly number[];
   baseSeed: number;
   episodeLengthS?: number;

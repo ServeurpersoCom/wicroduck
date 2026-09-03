@@ -1,6 +1,7 @@
 // Messages between the main thread and the training worker.
 
 import type { IterationStats, TrainerConfig } from "./trainer.ts";
+import type { TaskSpec } from "./env/tasks.ts";
 
 export interface TrainInit {
   robotXml: string;
@@ -10,8 +11,9 @@ export interface TrainInit {
    * calls for.
    */
   rolloutWorkers: number;
-  /** "hold_pose" is the bootstrap task; "standup" is the real one. */
-  task: "hold_pose" | "standup";
+  /** What to train. "hold_pose" bootstraps, "standup" is the real one, and a
+   *  motion task carries its file so every worker builds the same reward. */
+  task: TaskSpec;
   config: TrainerConfig;
   /** Write a checkpoint every N iterations; 0 disables autosave. */
   autosaveEvery: number;

@@ -7,10 +7,21 @@
 <footer class="status">
   <!-- data-phase drives the dot colour; "loading" leaves it neutral rather
        than showing the initial "standing" green before the sim exists. -->
-  <span class="phase" data-phase={session.ready ? session.phase : "loading"}>
-    <i></i>{session.started ? (session.ready ? PHASE_LABEL[session.phase] : "Loading") : "Idle"}
+  <span class="phase" data-phase={session.ready && !session.motionName ? session.phase : "loading"}>
+    <!-- While a motion is selected the policy is not driving, so the phase
+         machine's answer would be a stale "Standing". -->
+    <i></i>{session.started
+      ? session.ready
+        ? session.motionName
+          ? (session.motionPlaying ? "Playing" : "Paused")
+          : PHASE_LABEL[session.phase]
+        : "Loading"
+      : "Idle"}
   </span>
   {#if session.started}
+    {#if session.motionName}
+      <span><b>Motion</b>{session.motionName} · {Math.round(session.motionPhase * 100)}%</span>
+    {/if}
     <span><b>Upright</b>{session.uprightPct}%</span>
     <span><b>Trunk</b>{session.heightCm.toFixed(1)} cm</span>
     <span><b>Policy</b>{session.policyHz} Hz</span>

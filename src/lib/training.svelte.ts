@@ -5,6 +5,8 @@ import { DEFAULT_PPO } from "../train/ppo.ts";
 import { DEFAULT_TRAINER, type IterationStats, type TrainerConfig } from "../train/trainer.ts";
 import type { FromTrainWorker, ToTrainWorker } from "../train/train-protocol.ts";
 import { deleteCheckpoint, listCheckpoints, opfsAvailable, type CheckpointInfo } from "../train/checkpoint-store.ts";
+import type { TaskSpec } from "../train/env/tasks.ts";
+import { listMotions, loadMotionFile, type MotionEntry } from "../motion/motion-store.ts";
 
 /** The rolling autosave slot. Named saves live alongside it. */
 const AUTOSAVE = "autosave";
@@ -17,8 +19,16 @@ export interface HistoryPoint {
   standing: number;
 }
 
+/** The task picker's value. Motions are `motion:<id>`, where the id is the
+ *  motion-store id — so a built-in and a saved file of the same name stay
+ *  distinct. */
+export type TaskChoice = string;
+export const MOTION_TASK = "motion:";
+
 export class TrainingSession {
-  task = $state<"hold_pose" | "standup">("hold_pose");
+  task = $state<TaskChoice>("hold_pose");
+  /** Everything the task picker can offer beyond the two built-in tasks. */
+  motions = $state<MotionEntry[]>([]);
   /** Environments PER rollout worker. */
   envs = $state(32);
   /** 1 keeps environments in the learner's thread; more spreads the physics
@@ -61,6 +71,42 @@ export class TrainingSession {
     this.checkpoints = await listCheckpoints();
   }
 
+  async refreshMotions(): Promise<void> {
+    // A file that will not parse is listed with its error rather than
+    // silently dropped, but it cannot be trained on.
+    this.motions = (await listMotions()).filter((m) => !m.error);
+    if (this.task.startsWith(MOTION_TASK) && !this.motions.some((m) => m.id === this.motionId)) {
+      this.task = "hold_pose";
+    }
+  }
+
+  /** The selected motion's store id, or null when a plain task is selected. */
+  get motionId(): string | null {
+    return this.task.startsWith(MOTION_TASK) ? this.task.slice(MOTION_TASK.length) : null;
+  }
+
+  /** Human name for the current task, for save names and labels. */
+  get taskLabel(): string {
+    const id = this.motionId;
+    if (!id) return this.task;
+    return this.motions.find((m) => m.id === id)?.name ?? id;
+  }
+
+  /**
+   * Resolve the picker's value into the task the workers get.
+   *
+   * The motion FILE travels, not its name: the learner and every rollout
+   * worker have to build the same reward, and each of them looking the name up
+   * in storage is a way for them to disagree.
+   */
+  async #task(): Promise<TaskSpec> {
+    const id = this.motionId;
+    if (!id) return { kind: this.task === "standup" ? "standup" : "hold_pose" };
+    const motion = await loadMotionFile(id);
+    if (!motion) throw new Error(`motion "${id}" is gone`);
+    return { kind: "motion", motion };
+  }
+
   #config(): TrainerConfig {
     return {
       ...DEFAULT_TRAINER,
@@ -78,6 +124,14 @@ export class TrainingSession {
     if (this.status === "running" || this.status === "loading") return;
     this.status = "loading";
     this.error = null;
+    let task: TaskSpec;
+    try {
+      task = await this.#task();
+    } catch (err) {
+      this.error = err instanceof Error ? err.message : String(err);
+      this.status = "error";
+      return;
+    }
     if (!resume) {
       this.history = [];
       this.iteration = 0;
@@ -137,7 +191,7 @@ export class TrainingSession {
       init: {
         robotXml: "robot_allcollisions-nv.xml",
         rolloutWorkers: this.rolloutWorkers,
-        task: this.task,
+        task,
         config: this.#config(),
         autosaveEvery: 25,
         checkpointName: resume ? (this.resumeFrom ?? AUTOSAVE) : AUTOSAVE,
@@ -153,7 +207,7 @@ export class TrainingSession {
   /** Save the run under a name so it can be replayed in Simulate or continued
    *  later. Returns false if the user cancelled the prompt. */
   saveAs(): boolean {
-    const suggested = `${this.task}-${this.iteration}`;
+    const suggested = `${this.taskLabel}-${this.iteration}`;
     const raw = globalThis.prompt?.("Save this run as:", suggested);
     if (raw === null || raw === undefined) return false;
     // Checkpoint names become filenames in OPFS, so keep them tame.

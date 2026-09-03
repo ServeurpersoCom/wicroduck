@@ -5,8 +5,15 @@
   const s = new TrainingSession();
   onMount(() => {
     void s.refreshCheckpoints();
+    void s.refreshMotions();
     return () => s.dispose();
   });
+
+  const motion = $derived(s.motions.find((m) => m.id === s.motionId) ?? null);
+  // "Standing" is the right word for the two balance tasks. For a motion it is
+  // only a sanity signal — the duck being upright at roughly standing height —
+  // so it gets a name that does not overclaim.
+  const uprightLabel = $derived(motion ? "Upright" : "Standing");
 
   const num = (n: number) => Math.round(n).toLocaleString();
   const busy = $derived(s.status === "running" || s.status === "loading");
@@ -71,6 +78,15 @@
       <select bind:value={s.task} disabled={busy}>
         <option value="hold_pose">Hold the pose</option>
         <option value="standup">Stand up</option>
+        {#if s.motions.length}
+          <optgroup label="Motions">
+            {#each s.motions as m (m.id)}
+              <option value={"motion:" + m.id}>
+                {m.name}{m.source === "builtin" ? "" : " (yours)"}
+              </option>
+            {/each}
+          </optgroup>
+        {/if}
       </select>
     </label>
     <label>
@@ -100,6 +116,18 @@
     </label>
   </div>
 
+  {#if motion}
+    <p class="motion-note">
+      <strong>{motion.name}</strong>
+      {motion.duration.toFixed(1)} s, {motion.keyframes} keyframes,
+      {motion.loop ? "looping" : "played once"}.
+      {motion.description}
+      The policy is scored on matching those joint angles <em>while staying on
+      its feet</em> — it is only told where in the motion it is, so it has to
+      carry the motion itself.
+    </p>
+  {/if}
+
   {#if s.error}
     <p class="error">{s.error}</p>
   {/if}
@@ -112,7 +140,7 @@
     <div class="legend">
       <span class="key reward">Reward / step (exploring)</span>
       <span class="range">{path.min.toFixed(2)} – {path.max.toFixed(2)}</span>
-      <span class="key standing">Standing</span>
+      <span class="key standing">{uprightLabel}</span>
       <span class="range">0 – 100%</span>
     </div>
   {/if}
@@ -127,7 +155,7 @@
            than the policy is: the deterministic mean does noticeably better.
            Labelled rather than silently flattering. -->
       <div><dt>Reward / step <small>exploring</small></dt><dd>{l.rewardPerStep.toFixed(3)}</dd></div>
-      <div><dt>Standing <small>exploring</small></dt><dd>{(l.standingFraction * 100).toFixed(1)}%</dd></div>
+      <div><dt>{uprightLabel} <small>exploring</small></dt><dd>{(l.standingFraction * 100).toFixed(1)}%</dd></div>
       <div><dt>Episode return</dt><dd>{l.episodeReturn.toFixed(1)}</dd></div>
       <div><dt>KL</dt><dd>{l.approxKl.toFixed(4)}</dd></div>
       <div><dt>LR</dt><dd>{l.lr.toExponential(1)}</dd></div>
@@ -239,6 +267,11 @@
   .stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
   .foot { font-size: 10px; color: var(--muted); }
+  .motion-note {
+    margin: 0; padding: 8px 10px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 7px;
+  }
+  .motion-note strong { color: var(--ink); }
 
   .runs { display: flex; flex-direction: column; gap: 6px; }
   h4 {

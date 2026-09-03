@@ -5,6 +5,10 @@
     opfsAvailable, readCheckpointFile, renameCheckpoint, sanitizeName,
     type CheckpointInfo,
   } from "../train/checkpoint-store.ts";
+  import {
+    deleteMotion, importMotion, listMotions, loadMotionFile, readMotionFile,
+    renameMotion, saveMotion, type MotionEntry,
+  } from "../motion/motion-store.ts";
 
   interface Row extends CheckpointInfo {
     iteration?: number;
@@ -13,6 +17,7 @@
   }
 
   let rows = $state<Row[]>([]);
+  let motions = $state<MotionEntry[]>([]);
   let error = $state<string | null>(null);
   let busy = $state(false);
   const available = opfsAvailable();
@@ -36,8 +41,13 @@
     );
   }
 
+  async function refreshMotions(): Promise<void> {
+    motions = await listMotions();
+  }
+
   onMount(() => {
     void refresh();
+    void refreshMotions();
   });
 
   async function guard(fn: () => Promise<void>): Promise<void> {
@@ -46,6 +56,7 @@
     try {
       await fn();
       await refresh();
+      await refreshMotions();
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
     } finally {
@@ -53,15 +64,70 @@
     }
   }
 
-  async function download(name: string): Promise<void> {
-    const file = await readCheckpointFile(name);
-    const url = URL.createObjectURL(file);
+  function saveBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${name}.json`;
+    a.download = filename;
     a.click();
     // Revoked on the next tick — revoking immediately can cancel the download.
     setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  }
+
+  async function download(name: string): Promise<void> {
+    saveBlob(await readCheckpointFile(name), `${name}.json`);
+  }
+
+  /**
+   * Built-ins are not in storage, so they are re-serialised on the way out.
+   * Pretty-printed rather than minified: the point of downloading one is
+   * usually to hand it to an agent or edit it by hand.
+   */
+  async function downloadMotion(m: MotionEntry): Promise<void> {
+    if (m.source === "saved") {
+      saveBlob(await readMotionFile(m.id), `${m.name}.json`);
+      return;
+    }
+    const file = await loadMotionFile(m.id);
+    saveBlob(new Blob([JSON.stringify(file, null, 2)], { type: "application/json" }), `${m.name}.json`);
+  }
+
+  /** Copy a built-in into storage so it can be edited and renamed. */
+  function fork(m: MotionEntry): void {
+    const raw = globalThis.prompt?.("Save a copy of this motion as:", `${m.name}-copy`);
+    if (!raw) return;
+    const name = sanitizeName(raw);
+    if (!name) return;
+    void guard(async () => {
+      const file = await loadMotionFile(m.id);
+      if (!file) throw new Error(`motion "${m.id}" is gone`);
+      await saveMotion(name, { ...file, name });
+    });
+  }
+
+  function renameMotionRow(m: MotionEntry): void {
+    const raw = globalThis.prompt?.("Rename this motion:", m.id);
+    if (!raw) return;
+    const to = sanitizeName(raw);
+    if (!to || to === m.id) return;
+    void guard(() => renameMotion(m.id, to));
+  }
+
+  function removeMotion(m: MotionEntry): void {
+    if (!globalThis.confirm?.(`Delete motion “${m.name}”? This cannot be undone.`)) return;
+    void guard(() => deleteMotion(m.id));
+  }
+
+  async function uploadMotion(e: Event): Promise<void> {
+    const input = e.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (!file) return;
+    const name = sanitizeName(file.name.replace(/\.json$/i, ""));
+    // importMotion parses before it stores, so a bad file is rejected here
+    // with the parser's message rather than surfacing later as a training
+    // error nobody can connect back to the file.
+    await guard(async () => void await importMotion(name || "motion", await file.text()));
   }
 
   function rename(row: Row): void {
@@ -146,6 +212,52 @@
     </table>
     <p class="foot">{rows.length} run{rows.length === 1 ? "" : "s"} · {mb(total)} total</p>
   {/if}
+
+  <header class="second">
+    <div>
+      <h2>Motions</h2>
+      <p>
+        A motion is a small JSON file of joint angles over time — the input to
+        a tracking task, and the thing an AI agent can write for you from
+        <code>docs/motion-format.md</code>. The built-ins are always here;
+        download one to use as a starting point.
+      </p>
+    </div>
+    <label class="upload">
+      <input type="file" accept="application/json,.json" onchange={uploadMotion} disabled={busy} />
+      <span>Upload motion…</span>
+    </label>
+  </header>
+
+  <table class="motions">
+    <thead>
+      <tr>
+        <th>Name</th><th>Source</th><th class="n">Length</th>
+        <th class="n">Keys</th><th>Plays</th><th>Description</th><th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {#each motions as m (m.id)}
+        <tr>
+          <td class="name">{m.name}</td>
+          <td class="dim">{m.source === "builtin" ? "built-in" : "yours"}</td>
+          <td class="n">{m.error ? "—" : `${m.duration.toFixed(1)} s`}</td>
+          <td class="n">{m.error ? "—" : m.keyframes}</td>
+          <td class="dim">{m.error ? "—" : m.loop ? "looping" : "once"}</td>
+          <td class="desc" class:bad={!!m.error}>{m.error ?? m.description}</td>
+          <td class="actions">
+            <button disabled={busy} onclick={() => void downloadMotion(m)}>Download</button>
+            {#if m.source === "builtin"}
+              <button disabled={busy} onclick={() => fork(m)}>Save a copy</button>
+            {:else}
+              <button disabled={busy} onclick={() => renameMotionRow(m)}>Rename</button>
+              <button class="danger" disabled={busy} onclick={() => removeMotion(m)}>Delete</button>
+            {/if}
+          </td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
 </div>
 
 <style>
@@ -155,6 +267,8 @@
     padding: 20px 24px; overflow-y: auto; background: var(--viewport);
   }
   header { display: flex; align-items: flex-start; gap: 20px; }
+  header.second { margin-top: 10px; padding-top: 18px; border-top: 1px solid var(--line); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
   header > div { flex: 1; min-width: 0; }
   h2 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
   p { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); max-width: 74ch; }
@@ -179,6 +293,8 @@
   .name { font-weight: 600; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
   .dim { color: var(--muted); }
+  .desc { white-space: normal; max-width: 42ch; color: var(--muted); }
+  .desc.bad { color: var(--danger); }
 
   .actions { display: flex; gap: 6px; padding-right: 0; }
   .actions button {

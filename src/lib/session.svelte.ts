@@ -12,6 +12,8 @@ import { MicroduckController, type Phase } from "../sim/controller.ts";
 import { CTRL_DT, TRUNK_BODY } from "../sim/microduck.ts";
 import { Viewer } from "../render/viewer.ts";
 import { assetUrl } from "../asset-url.ts";
+import { MotionPlayer, type PlayMode } from "../motion/player.ts";
+import { listMotions, loadMotion, type MotionEntry } from "../motion/motion-store.ts";
 
 export const POLICY_NAME = "alpha_stand.onnx";
 const POLICY_URL = assetUrl(`policies/${POLICY_NAME}`);
@@ -61,6 +63,21 @@ export class Session {
   activePolicy = $state(POLICY_NAME);
   policyError = $state<string | null>(null);
   policyBusy = $state(false);
+
+  /** Motion playback. Null means the policy is driving, as usual. */
+  motions = $state<MotionEntry[]>([]);
+  activeMotion = $state<string | null>(null);
+  motionMode = $state<PlayMode>("preview");
+  motionPlaying = $state(false);
+  /** 0..1 through the motion, for the scrubber. */
+  motionPhase = $state(0);
+  motionError = $state<string | null>(null);
+  /** Mirrors of the player's identity. Reactive state rather than getters over
+   *  #player: a plain private field is invisible to Svelte, so the status bar
+   *  would never notice a motion being selected. */
+  motionName = $state<string | null>(null);
+  motionDuration = $state(0);
+  #player: MotionPlayer | null = null;
 
   #autoRepeat = $state(false);
   get autoRepeat(): boolean {
@@ -130,6 +147,7 @@ export class Session {
       // before `ready` flips, or a run saved earlier is missing from it until
       // something else happens to trigger a refresh.
       await this.refreshPolicies();
+      await this.refreshMotions();
       const controller = new MicroduckController(sim, policy);
       controller.onRecoveryEnd = () => {
         if (!this.#autoRepeat) return;
@@ -180,7 +198,17 @@ export class Session {
 
       while (accumulator >= CTRL_DT) {
         accumulator -= CTRL_DT;
-        await controller.step();
+        const player = this.#player;
+        if (player && this.motionPlaying) {
+          // The motion drives; the policy is out of the loop entirely. In
+          // preview mode that means no physics at all — the duck is placed,
+          // not simulated.
+          player.step(CTRL_DT, this.motionMode);
+          this.motionPhase = player.phase;
+          if (player.finished) this.motionPlaying = false;
+        } else {
+          await controller.step();
+        }
         steps++;
       }
 
@@ -201,6 +229,77 @@ export class Session {
       this.#frame = requestAnimationFrame(() => void tick());
     };
     void tick();
+  }
+
+  async refreshMotions(): Promise<void> {
+    this.motions = (await listMotions()).filter((m) => !m.error);
+    if (this.activeMotion && !this.motions.some((m) => m.id === this.activeMotion)) {
+      await this.selectMotion(null);
+    }
+  }
+
+  /**
+   * Choose a motion to play, or null to hand the duck back to the policy.
+   *
+   * Selecting one places the duck at the motion's first frame rather than
+   * starting playback — the still pose is usually what you want to look at
+   * first, and it makes the scrubber meaningful before anything moves.
+   */
+  async selectMotion(id: string | null): Promise<void> {
+    this.motionPlaying = false;
+    this.motionError = null;
+    this.motionPhase = 0;
+    if (!id) {
+      this.#player = null;
+      this.activeMotion = null;
+      this.motionName = null;
+      this.motionDuration = 0;
+      this.#controller?.reset();
+      return;
+    }
+    const sim = this.#sim;
+    if (!sim) return;
+    try {
+      const motion = await loadMotion(id);
+      if (!motion) throw new Error(`motion "${id}" is gone`);
+      this.#player = new MotionPlayer(sim, motion);
+      this.activeMotion = id;
+      this.motionName = motion.name;
+      this.motionDuration = motion.duration;
+    } catch (err) {
+      this.#player = null;
+      this.activeMotion = null;
+      this.motionName = null;
+      this.motionDuration = 0;
+      this.motionError = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  playMotion(): void {
+    if (!this.#player) return;
+    // Physics playback from a half-finished preview would start mid-air with
+    // the velocities the file implies; restarting is the honest thing to show.
+    if (this.#player.finished || this.motionMode === "physics") this.#player.rewind();
+    this.motionPlaying = true;
+  }
+
+  pauseMotion(): void {
+    this.motionPlaying = false;
+  }
+
+  rewindMotion(): void {
+    this.#player?.rewind();
+    this.motionPhase = 0;
+  }
+
+  /** Scrub to a fraction of the motion. Preview only — seeking teleports, and
+   *  teleporting a physics run is not a thing that means anything. */
+  seekMotion(phase: number): void {
+    const player = this.#player;
+    if (!player) return;
+    this.motionPlaying = false;
+    player.seek(phase * player.duration);
+    this.motionPhase = player.phase;
   }
 
   /** Re-read the saved runs. Cheap, and the Train workspace can add one at

@@ -1,8 +1,10 @@
 // Messages between the learner and a rollout worker.
 
+import type { TaskSpec } from "./env/tasks.ts";
+
 export interface RolloutInit {
   robotXml: string;
-  task: "hold_pose" | "standup";
+  task: TaskSpec;
   envs: number;
   seed: number;
   episodeLengthS?: number;

@@ -26,6 +26,13 @@
       view: "files" as View,
     },
     {
+      state: "ready",
+      title: "Show it a motion",
+      body: "Write joint angles over time as JSON — or have an AI agent write them — and train a policy to perform it while balancing.",
+      action: "Open Files",
+      view: "files" as View,
+    },
+    {
       state: "soon",
       title: "Export and deploy",
       body: "Send a trained policy to a real duck. Needs ONNX export and the BAM actuator model first.",
@@ -94,6 +101,38 @@
     },
   ];
 
+  /** The other route: some skills are easier to demonstrate than to describe. */
+  const motionSteps = [
+    {
+      n: 1,
+      title: "Write the motion",
+      where: "docs/motion-format.md",
+      body: "Joint angles at a few points in time, as JSON. Only the joints you name are yours; the rest hold the reference pose. Hand the spec to an AI agent with \u201cmake the duck take a slow bow\u201d and it can write the file — a wrong angle is visible, which a wrong reward is not.",
+      code: null,
+    },
+    {
+      n: 2,
+      title: "Upload it and look at it",
+      where: "Files \u2192 Upload motion, then Simulate",
+      body: "Preview places the joints exactly as written, with no physics — the view for checking it looks the way you meant. Switch to physics playback and it will fall over: open-loop, this robot topples in about a second whatever you ask of it. That is the task, not a bug in your file.",
+      code: null,
+    },
+    {
+      n: 3,
+      title: "Train on it",
+      where: "Train \u2192 Task \u2192 your motion",
+      body: "The policy is scored on matching your angles while staying on its feet. It is told only where in the motion it is, so what you get back is a self-contained policy that carries the motion itself.",
+      code: null,
+    },
+    {
+      n: 4,
+      title: "Expect some motions to be impossible",
+      where: "",
+      body: "The duck's head is ~38% of its mass. A pose that looks fine in a file may not be reachable while balancing, and the failure looks like a training bug. Keep the mass over the feet.",
+      code: null,
+    },
+  ];
+
   const rules = [
     ["It optimises the letter of the reward", "Every degree of freedom you leave unspecified gets exploited. Encode what counts as the skill in hard state checks, not small nudges."],
     ["No jackpots", "A \"reach X\" bonus that then pays per step buys arbitrary violence to get there early. Rate-limit it."],
@@ -141,6 +180,28 @@
             <h4>{s.title} {#if s.where}<code>{s.where}</code>{/if}</h4>
             <p>{s.body}</p>
             {#if s.code}<pre>{s.code}</pre>{/if}
+          </div>
+        </li>
+      {/each}
+    </ol>
+  </section>
+
+  <section>
+    <h3 class="section">Or show it, instead of describing it</h3>
+    <p class="lede">
+      Reward engineering is the right tool for a goal defined by an outcome —
+      get up, don't fall, hold a velocity. For anything with a <em>shape</em> —
+      a bow, a wave, a dance — it is easier to demonstrate the skill than to
+      write a function that scores it.
+    </p>
+
+    <ol class="steps">
+      {#each motionSteps as s (s.n)}
+        <li>
+          <span class="n">{s.n}</span>
+          <div>
+            <h4>{s.title} {#if s.where}<code>{s.where}</code>{/if}</h4>
+            <p>{s.body}</p>
           </div>
         </li>
       {/each}

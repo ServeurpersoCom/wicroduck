@@ -74,6 +74,7 @@ npm run check:env       # the training env: does the reward stack rank behaviour
 npm run check:grad      # finite-difference the hand-written backprop
 npm run check:ppo       # can PPO solve a toy task at all?
 npm run check:kernels   # do the SIMD kernels match the JS reference?
+npm run check:motion    # motion files: format, interpolator, and the tracking reward
 npm run check:trainer   # can it learn on the robot, and does a checkpoint restore?
 npm run typecheck
 ```
@@ -90,6 +91,14 @@ function cannot be validated alone: "alpha_stand scores 8.9" means nothing
 until you know that doing nothing scores 1.6. Unlike `check:standup` this one
 imports the real `src/` modules (Node 24 strips the types), so it tests the
 code the trainer will run.
+
+`check:motion` validates the motion format, checks the interpolator's analytic
+velocity against finite differences, and then does the thing that actually
+matters: runs an *oracle* controller — one that reads the reference straight
+out of the sampler — against the same do-nothing and random baselines, and
+asserts the tracking reward prefers it. If performing a motion does not score
+better than ignoring it, training on the motion is pointless, and finding that
+out here costs seconds.
 
 `check:grad`, `check:ppo` and `check:trainer` gate the learner in that order —
 each one is cheap and the next is only meaningful if it passes. Hand-rolled

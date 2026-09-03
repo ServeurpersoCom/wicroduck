@@ -8,7 +8,7 @@
 
 import { setAssetBase } from "../asset-url.ts";
 import { compileScene, loadModelAssets } from "../sim/scene.ts";
-import { holdPoseSpec, standupSpec } from "./env/standup.ts";
+import { buildSpec } from "./env/tasks.ts";
 import { Trainer, type Checkpoint } from "./trainer.ts";
 import { loadCheckpoint, saveCheckpoint } from "./checkpoint-store.ts";
 import { loadKernels } from "./kernels/index.ts";
@@ -24,7 +24,7 @@ const post = (msg: FromTrainWorker) => self.postMessage(msg);
 async function init(baseUrl: string, options: TrainInit): Promise<void> {
   setAssetBase(baseUrl);
   cfg = options;
-  const spec = options.task === "hold_pose" ? holdPoseSpec() : standupSpec();
+  const spec = buildSpec(options.task);
   // Vite turns this into a static asset URL. If it fails to load — an engine
   // without SIMD, a stripped deployment — the nets fall back to JavaScript
   // rather than the worker dying.
