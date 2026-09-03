@@ -34,6 +34,9 @@ export class Session {
   loadStage = $state("Starting…");
   loadProgress = $state(0);
   ready = $state(false);
+  /** True once the viewport has been opened at least once. Until then no model
+   *  has been downloaded — landing on the Guide should not pull 21 MB. */
+  started = $state(false);
   error = $state<string | null>(null);
 
   /** Live telemetry, as separate primitives: assigning an unchanged value is a
@@ -76,6 +79,7 @@ export class Session {
   #disposed = false;
 
   async start(canvas: HTMLCanvasElement): Promise<void> {
+    this.started = true;
     try {
       const viewer = new Viewer(canvas);
       this.#viewer = viewer;

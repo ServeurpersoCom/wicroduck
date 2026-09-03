@@ -1,7 +1,8 @@
 /** The workspaces the left rail switches between. */
-export type View = "sim" | "train";
+export type View = "guide" | "sim" | "train";
 
 export const VIEWS: { id: View; label: string; hint: string }[] = [
+  { id: "guide", label: "Guide", hint: "Start here" },
   { id: "sim", label: "Simulate", hint: "Run a trained policy" },
-  { id: "train", label: "Train", hint: "Throughput harness" },
+  { id: "train", label: "Train", hint: "PPO in your browser" },
 ];

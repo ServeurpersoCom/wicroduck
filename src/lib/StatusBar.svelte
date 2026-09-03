@@ -8,11 +8,15 @@
   <!-- data-phase drives the dot colour; "loading" leaves it neutral rather
        than showing the initial "standing" green before the sim exists. -->
   <span class="phase" data-phase={session.ready ? session.phase : "loading"}>
-    <i></i>{session.ready ? PHASE_LABEL[session.phase] : "Loading"}
+    <i></i>{session.started ? (session.ready ? PHASE_LABEL[session.phase] : "Loading") : "Idle"}
   </span>
-  <span><b>Upright</b>{session.uprightPct}%</span>
-  <span><b>Trunk</b>{session.heightCm.toFixed(1)} cm</span>
-  <span><b>Policy</b>{session.policyHz} Hz</span>
+  {#if session.started}
+    <span><b>Upright</b>{session.uprightPct}%</span>
+    <span><b>Trunk</b>{session.heightCm.toFixed(1)} cm</span>
+    <span><b>Policy</b>{session.policyHz} Hz</span>
+  {:else}
+    <span class="dim">Simulator loads on first visit</span>
+  {/if}
   <span class="spacer"></span>
   <span class="dim">MuJoCo WASM · onnxruntime-web · {POLICY_NAME}</span>
 </footer>

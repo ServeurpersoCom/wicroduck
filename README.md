@@ -38,12 +38,16 @@ A studio-style shell: a left rail switches workspaces, an inspector on the
 right holds the controls for the active one, and a status bar carries live
 telemetry.
 
-- **Simulate** — the viewport, the stand-up demo. Working.
-- **Train** — a placeholder. See "Where it is going" below.
+- **Guide** — the landing page: what this does, and a worked example of
+  teaching the duck a new skill.
+- **Simulate** — the viewport and the stand-up demo.
+- **Train** — the throughput harness, the vectorized environment, and PPO.
 
-The stage stays mounted when you switch away from Simulate: booting MuJoCo and
-the policy takes seconds, so the WebGL context is kept and only the drawing is
-paused (physics keeps stepping).
+The simulator loads on the first visit to Simulate rather than at startup —
+it is a 21 MB download and nobody reading the Guide asked for it. After that
+the stage stays mounted across workspace switches, because booting MuJoCo and
+the policy takes seconds; it is fully paused while hidden, so a duck stepping
+in the background cannot skew the throughput harness next door.
 
 | Control | What it does |
 | ------- | ------------ |

@@ -4,17 +4,29 @@
   import Inspector from "./lib/Inspector.svelte";
   import StatusBar from "./lib/StatusBar.svelte";
   import TrainView from "./lib/TrainView.svelte";
+  import GuideView from "./lib/GuideView.svelte";
   import { Session } from "./lib/session.svelte";
   import type { View } from "./lib/views.ts";
 
-  const session = new Session();
-  let view = $state<View>("sim");
+  const TITLES: Record<View, { title: string; crumb: string }> = {
+    guide: { title: "Guide", crumb: "What this is and how to use it" },
+    sim: { title: "Simulate", crumb: "Microduck · stand-up policy" },
+    train: { title: "Train", crumb: "Microduck · PPO" },
+  };
 
-  // The stage stays mounted across workspace switches — booting MuJoCo and the
-  // policy takes seconds, and tearing the WebGL context down to rebuild it
-  // would throw that away. It is fully paused while hidden, though: a duck
-  // stepping in the background would skew the throughput harness next door.
-  $effect(() => session.setActive(view === "sim"));
+  const session = new Session();
+  let view = $state<View>("guide");
+
+  // The stage mounts on the first visit to Simulate and stays mounted after —
+  // booting MuJoCo and the policy takes seconds and costs a 21 MB download, so
+  // it should not happen behind someone reading the Guide, and it should not
+  // happen twice. It is fully paused while hidden: a duck stepping in the
+  // background would skew the throughput harness next door.
+  let simMounted = $state(false);
+  $effect(() => {
+    if (view === "sim") simMounted = true;
+    session.setActive(view === "sim");
+  });
 </script>
 
 <!-- The inspector column only exists for workspaces that have one; without
@@ -23,20 +35,22 @@
   <Rail bind:view />
 
   <header class="topbar">
-    <h1>{view === "sim" ? "Simulate" : "Train"}</h1>
-    <span class="crumb">
-      {view === "sim" ? "Microduck · stand-up policy" : "Microduck · PPO"}
-    </span>
+    <h1>{TITLES[view].title}</h1>
+    <span class="crumb">{TITLES[view].crumb}</span>
   </header>
 
-  <!-- Kept in the DOM, hidden when another workspace is up front. -->
-  <div class="main" class:hidden={view !== "sim"}>
-    <Stage {session} />
-  </div>
+  <!-- Kept in the DOM once mounted, hidden when another workspace is up front. -->
+  {#if simMounted}
+    <div class="main" class:hidden={view !== "sim"}>
+      <Stage {session} />
+    </div>
+  {/if}
   {#if view === "sim"}
     <Inspector {session} />
-  {:else}
+  {:else if view === "train"}
     <TrainView />
+  {:else}
+    <GuideView go={(v) => (view = v)} />
   {/if}
 
   <StatusBar {session} />

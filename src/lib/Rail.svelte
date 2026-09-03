@@ -21,7 +21,12 @@
           aria-current={view === item.id ? "page" : undefined}
           onclick={() => (view = item.id)}
         >
-          {#if item.id === "sim"}
+          {#if item.id === "guide"}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 5a2 2 0 0 1 2-2h5v18H6a2 2 0 0 1-2-2z" />
+              <path d="M20 5a2 2 0 0 0-2-2h-5v18h5a2 2 0 0 0 2-2z" />
+            </svg>
+          {:else if item.id === "sim"}
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 2.6 21 7.4v9.2L12 21.4 3 16.6V7.4z" />
               <path d="M3 7.4 12 12m0 0 9-4.6M12 12v9.4" />
