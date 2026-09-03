@@ -6,6 +6,7 @@
   import TrainView from "./lib/TrainView.svelte";
   import GuideView from "./lib/GuideView.svelte";
   import FilesView from "./lib/FilesView.svelte";
+  import DebugView from "./lib/DebugView.svelte";
   import { Session } from "./lib/session.svelte";
   import type { View } from "./lib/views.ts";
 
@@ -14,6 +15,7 @@
     sim: { title: "Simulate", crumb: "Microduck · stand-up policy" },
     train: { title: "Train", crumb: "Microduck · PPO" },
     files: { title: "Files", crumb: "Checkpoints saved in this browser" },
+    debug: { title: "Debug", crumb: "Throughput and environment instruments" },
   };
 
   const session = new Session();
@@ -58,6 +60,8 @@
     <TrainView />
   {:else if view === "files"}
     <FilesView />
+  {:else if view === "debug"}
+    <DebugView />
   {:else}
     <GuideView go={(v) => (view = v)} />
   {/if}

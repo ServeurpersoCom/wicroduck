@@ -7,8 +7,18 @@
 // together by a single "run" broadcast.
 
 import { assetBase } from "../asset-url.ts";
+import { markAttempt, markDone } from "./crash-log.ts";
 import { CTRL_DT, DECIMATION } from "../sim/microduck.ts";
 import type { BenchConfig, FromWorker, WorkerStats } from "./protocol.ts";
+
+/** Stable identity for a sweep cell, so a crash can be attributed to it. */
+export function cellId(config: BenchConfig, workers: number): string {
+  return `${config.robotXml}|w${workers}|e${config.envs}|${config.memory ?? "default"}|${config.withPolicy ? "p" : "-"}`;
+}
+
+export function cellLabel(config: BenchConfig, workers: number): string {
+  return `${config.robotXml.replace("robot_", "").replace(".xml", "")}, ${workers}x${config.envs}`;
+}
 
 export interface CellResult {
   robotXml: string;
@@ -26,6 +36,8 @@ export interface CellResult {
   ngeom: number;
   /** At least one worker hit the wasm heap ceiling. */
   oom: boolean;
+  /** Skipped because this configuration killed the tab on a previous run. */
+  skipped?: boolean;
   error?: string;
 }
 
@@ -98,6 +110,10 @@ export async function runCell(
   workers: number,
   durationMs: number,
 ): Promise<CellResult> {
+  // Written down BEFORE the pool exists: if this cell takes the tab with it,
+  // the missing "done" is the only evidence left.
+  const id = cellId(config, workers);
+  markAttempt(id, cellLabel(config, workers));
   const pool = Array.from({ length: workers }, spawn);
   const base: CellResult = {
     robotXml: config.robotXml,
@@ -147,6 +163,7 @@ export async function runCell(
     return { ...base, error: err instanceof Error ? err.message : String(err) };
   } finally {
     for (const w of pool) w.terminate();
+    markDone(id);
   }
 }
 
@@ -163,11 +180,13 @@ export function planCells(plan: SweepPlan): BenchConfig[] {
 export interface SweepCallbacks {
   onCell?: (result: CellResult, index: number, total: number) => void;
   shouldStop?: () => boolean;
+  /** Configurations to skip because they previously killed the tab. */
+  skip?: Set<string>;
 }
 
 export async function runSweep(
   plan: SweepPlan,
-  { onCell, shouldStop }: SweepCallbacks = {},
+  { onCell, shouldStop, skip }: SweepCallbacks = {},
 ): Promise<CellResult[]> {
   const cells = planCells(plan);
   const total = cells.length * plan.workers.length;
@@ -176,6 +195,18 @@ export async function runSweep(
   for (const cell of cells) {
     for (const workers of plan.workers) {
       if (shouldStop?.()) return out;
+      if (skip?.has(cellId(cell, workers))) {
+        const skipped: CellResult = {
+          robotXml: cell.robotXml, workers, envsPerWorker: cell.envs,
+          withPolicy: cell.withPolicy, envs: 0, controlStepsPerSec: 0,
+          realtimeFactor: 0, bytesPerEnv: 0, heapTotalBytes: 0, ngeom: 0,
+          oom: false, skipped: true,
+          error: "skipped — this configuration crashed the tab before",
+        };
+        out.push(skipped);
+        onCell?.(skipped, ++i, total);
+        continue;
+      }
       const result = await runCell(cell, workers, plan.durationMs);
       out.push(result);
       onCell?.(result, ++i, total);

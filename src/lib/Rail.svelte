@@ -36,9 +36,14 @@
               <path d="M3 20h18" />
               <path d="M5 20V9m4.7 11V4m4.6 16v-7M19 20v-4" />
             </svg>
-          {:else}
+          {:else if item.id === "files"}
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v7.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
+            </svg>
+          {:else}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="12" cy="13" r="5" />
+              <path d="M12 8V5m0 0-2-2m2 2 2-2M7.5 9.5 5 7m14 2.5L21.5 7M7 13H3m18 0h-4M7.5 16.5 5 19m14-2.5L21.5 19" />
             </svg>
           {/if}
           <span class="label">

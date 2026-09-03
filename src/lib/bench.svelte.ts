@@ -1,6 +1,7 @@
 // Reactive wrapper around the M0 throughput sweep.
 
 import { runSweep, type CellResult, type SweepPlan } from "../train/benchmark.ts";
+import { clearCrashes, crashedIds, crashedList, type Attempt } from "../train/crash-log.ts";
 import { EnvPool } from "../train/rollout.ts";
 import type { RolloutStats } from "../train/env-protocol.ts";
 
@@ -33,6 +34,8 @@ export class Bench {
   durationMs = $state(2000);
 
   running = $state(false);
+  /** Configurations that killed the tab on a previous run; skipped, not retried. */
+  crashed = $state<Attempt[]>(crashedList());
   progress = $state({ done: 0, total: 0 });
   results = $state<CellResult[]>([]);
   error = $state<string | null>(null);
@@ -81,6 +84,12 @@ export class Bench {
 
   stop(): void {
     this.#stop = true;
+  }
+
+  /** Let previously-crashing configurations be attempted again. */
+  forgetCrashes(): void {
+    clearCrashes();
+    this.crashed = [];
   }
 
   /**
@@ -135,7 +144,11 @@ export class Bench {
     };
 
     try {
+      // A cell that took the whole tab down last time is not retried — it
+      // would just take it down again, and the log is the only record.
+      const skip = crashedIds();
       await runSweep(plan, {
+        skip,
         // Reassign rather than push: `$state` tracks the reference, and the
         // table should repaint as each cell lands.
         onCell: (result, done, total) => {

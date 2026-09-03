@@ -41,13 +41,12 @@
 <section class="train-panel">
   <header class="sub">
     <div>
-      <h3>Training <span class="tag">M2</span></h3>
+      <h3>Train a policy</h3>
       <p>
-        PPO over the vectorized environment, in a worker. Correctness is settled
-        headlessly — <code>check:grad</code> finite-differences the backprop,
-        <code>check:ppo</code> solves a toy task, and <code>check:trainer</code>
-        learns to hold the pose and round-trips a checkpoint. This is the same
-        loop, watchable.
+        PPO over the vectorized environment, in a worker. Pick a task, press
+        Train, and watch the standing line — reward can climb while the
+        behaviour gets worse. Save a run to replay it in Simulate or continue
+        it later.
       </p>
     </div>
     <div class="buttons">
@@ -181,16 +180,12 @@
 </section>
 
 <style>
-  .train-panel {
-    display: flex; flex-direction: column; gap: 10px;
-    padding-top: 14px; border-top: 1px solid var(--line);
-  }
+  .train-panel { display: flex; flex-direction: column; gap: 10px; }
   .sub { display: flex; align-items: flex-start; gap: 20px; }
   .sub > div:first-child { flex: 1; min-width: 0; }
   .buttons { display: flex; gap: 6px; }
   h3 { margin: 0; font-size: 13px; letter-spacing: -0.01em; }
   p { margin: 6px 0 0; font-size: 12px; line-height: 1.55; color: var(--muted); max-width: 78ch; }
-  code { background: var(--panel-hi); padding: 1px 4px; border-radius: 4px; font-size: 0.92em; }
 
   button {
     font: inherit; font-size: 12px; font-weight: 600;
