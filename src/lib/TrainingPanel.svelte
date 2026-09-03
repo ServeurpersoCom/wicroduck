@@ -123,6 +123,9 @@
       <div><dt>LR</dt><dd>{l.lr.toExponential(1)}</dd></div>
       <div><dt>Iter time</dt><dd>{(l.rolloutMs + l.updateMs).toFixed(0)} ms</dd></div>
       <div><dt>Rollout / update</dt><dd>{Math.round((l.rolloutMs / (l.rolloutMs + l.updateMs)) * 100)}% / {Math.round((l.updateMs / (l.rolloutMs + l.updateMs)) * 100)}%</dd></div>
+      <!-- Measured inside the update, not modelled — see docs/training-plan.md
+           on why microbenchmarks mis-price the backward pass. -->
+      <div><dt>Update fwd / bwd</dt><dd>{l.fwdMs.toFixed(0)} / {l.bwdMs.toFixed(0)} ms</dd></div>
     </dl>
   {/if}
 

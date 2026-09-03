@@ -120,6 +120,12 @@ export interface UpdateStats {
   clipFraction: number;
   gradNorm: number;
   lr: number;
+  /** Where the update's time went. Measured rather than modelled: synthetic
+   *  benchmarks mis-price the backward pass, which skips rows whose incoming
+   *  gradient is zero — and the clip fraction decides how many those are. */
+  fwdMs: number;
+  bwdMs: number;
+  otherMs: number;
 }
 
 /** Fisher-Yates over a reusable index array. */
@@ -160,7 +166,9 @@ export function ppoUpdate(
   const stats: UpdateStats = {
     initialKl: 0, policyLoss: 0, valueLoss: 0, entropy: 0,
     approxKl: 0, clipFraction: 0, gradNorm: 0, lr: opt.lr,
+    fwdMs: 0, bwdMs: 0, otherMs: 0,
   };
+  const updateStart = performance.now();
   let updates = 0;
 
   // Scratch, sized for one minibatch.
@@ -169,20 +177,32 @@ export function ppoUpdate(
   const gMean = new Float32Array(mbSize * buf.actDim);
   const gValue = new Float32Array(mbSize);
   const gLogStdOne = new Float32Array(buf.actDim);
+  // Per-sample scratch, hoisted. Allocating these inside the sample loop cost
+  // more than the matrix multiplies they feed: 192 samples x 20 minibatches is
+  // ~4k allocations an iteration, and the profiler attributed over half the
+  // update to it.
+  const gMeanOne = new Float32Array(buf.actDim);
 
   for (let epoch = 0; epoch < cfg.epochs; epoch++) {
     shuffle(idx, rng);
     for (let mb = 0; mb < cfg.minibatches; mb++) {
       const start = mb * mbSize;
+      // Explicit index copies rather than set(subarray(...)): each subarray is
+      // a fresh TypedArray object, and two per sample adds up to thousands of
+      // short-lived allocations per iteration.
       for (let k = 0; k < mbSize; k++) {
         const s = idx[start + k];
-        mbObs.set(buf.obs.subarray(s * buf.obsDim, (s + 1) * buf.obsDim), k * buf.obsDim);
-        mbAct.set(buf.actions.subarray(s * buf.actDim, (s + 1) * buf.actDim), k * buf.actDim);
+        const src = s * buf.obsDim, dst = k * buf.obsDim;
+        for (let i = 0; i < buf.obsDim; i++) mbObs[dst + i] = buf.obs[src + i];
+        const asrc = s * buf.actDim, adst = k * buf.actDim;
+        for (let i = 0; i < buf.actDim; i++) mbAct[adst + i] = buf.actions[asrc + i];
       }
 
+      const tFwd = performance.now();
       const normObs = ac.normalize(mbObs, mbSize);
       const mean = ac.actor.forward(normObs, mbSize);
       const value = ac.critic.forward(normObs, mbSize);
+      stats.fwdMs += performance.now() - tFwd;
 
       ac.zeroGrad();
       gMean.fill(0);
@@ -193,7 +213,7 @@ export function ppoUpdate(
         const s = idx[start + k];
         const off = k * buf.actDim;
         gLogStdOne.fill(0);
-        const gMeanOne = new Float32Array(buf.actDim);
+        gMeanOne.fill(0);
         const logp = gaussianLogProb(mbAct, mean, ac.logStd, off, gMeanOne, gLogStdOne);
 
         const adv = (buf.advantages[s] - advMean) / advStd;
@@ -231,10 +251,12 @@ export function ppoUpdate(
 
       if (epoch === 0 && mb === 0) stats.initialKl = kl / mbSize;
 
+      const tBwd = performance.now();
       ac.actor.backward(gMean, mbSize);
       ac.critic.backward(gValue, mbSize);
       stats.gradNorm = ac.clipGrads(cfg.maxGradNorm);
       opt.step(ac.tensors());
+      stats.bwdMs += performance.now() - tBwd;
 
       stats.policyLoss += pLoss / mbSize;
       stats.valueLoss += vLoss / mbSize;
@@ -258,5 +280,6 @@ export function ppoUpdate(
   stats.clipFraction /= updates;
   stats.entropy = ac.entropy;
   stats.lr = opt.lr;
+  stats.otherMs = performance.now() - updateStart - stats.fwdMs - stats.bwdMs;
   return stats;
 }

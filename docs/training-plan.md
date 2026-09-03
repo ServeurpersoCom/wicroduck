@@ -192,6 +192,42 @@ the untrained baseline is ~22% standing rather than 100%. This is exactly the
 check AGENTS.md prescribes before training, and it would have been an
 expensive assumption to carry into a long run.
 
+### Where a training iteration actually goes
+
+`npm run profile` breaks an iteration into its parts, at 32 envs × 24 steps,
+5 epochs × 4 minibatches of 192:
+
+| | 128/64 | 512/256/128 (reference) |
+| --- | ---: | ---: |
+| Rollout physics + reward | 106 ms (34%) | 85 ms (**3.4%**) |
+| Rollout policy forward | 18 ms (6%) | 197 ms (7.8%) |
+| PPO update | 207 ms (66%) | 2,248 ms (**88.9%**) |
+| — of which forward | 86 ms | 993 ms |
+| — of which backward + clip + Adam | 120 ms | 1,257 ms |
+| — of which everything else | 1 ms | **1 ms** |
+| **Dense linear algebra** | 71% | **96.7%** |
+
+**This overturns what M0 implied about M3.** M0 measured a rollout-only loop
+and found inference at ~70% of the step budget. With a learner attached that
+is no longer the target: rollout inference is 7.8%, and the update's own
+forward/backward is 89%. Each sample is forwarded once during rollout but
+forwarded *and* backwarded five times during the update — so the update costs
+~11× the rollout's inference, and optimising rollout inference first would
+have chased 8% of the problem.
+
+Physics is 3.4%. It is not worth touching.
+
+Two cheap levers exist before any SIMD work: `epochs` (5 is the reference;
+2 would cut the update 2.5× at some sample-efficiency cost) and minibatch size,
+which a vectorised kernel would amortise better.
+
+A note on measuring this: `MlpNet.backward` skips a row whose incoming
+gradient is exactly zero, and the PPO clip fraction decides how many those are
+(30–42% here). Microbenchmarks with zero-filled gradients therefore price the
+backward pass at nearly nothing, and ones with dense synthetic gradients
+over-price it by ~28%. `UpdateStats` now reports its own `fwdMs`/`bwdMs`/
+`otherMs`, measured in place, because neither synthetic bracket was right.
+
 ### Three bugs that only a gate would have caught
 
 **The observation normalizer must not update between rollout and update.**
@@ -239,7 +275,7 @@ moving a run between machines is still to do.
 | ~~M0~~ | ~~Throughput harness~~ | ✅ ~58 k steps/s — section 1 |
 | ~~M1~~ | ~~Vectorized env + the four seams~~ | ✅ `alpha_stand` 8.91 vs 1.64 do-nothing — section 4 |
 | ~~M2~~ | ~~PPO on CPU + checkpoint/resume~~ | ✅ toy task solved, hold-pose learned — section 4 |
-| **M3** | **Rollout inference first** (WASM SIMD GEMM), then the WebGPU learner — M0 says inference is 68% of the budget | Iteration time low enough to watch |
+| **M3** | The **learner's** forward/backward — 89% of an iteration at reference net size. WASM SIMD, then WebGPU | Iteration time low enough to watch |
 | **M4** | Fine-tune from a shipped checkpoint | A visibly adapted policy |
 | **M5** | From-scratch standup, ONNX export, round-trip into Simulate | A policy we trained, running in the Simulate tab |
 
