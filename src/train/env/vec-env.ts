@@ -84,6 +84,12 @@ export class VecEnv {
 
   /** Accumulated per-term reward since the last resetBreakdown(). */
   readonly breakdown: RewardBreakdown = {};
+  /**
+   * Environment-steps where the physics diverged and produced a non-finite
+   * reward or observation. Counted rather than swallowed: it should be rare,
+   * and a rising number means the model or the action scale is wrong.
+   */
+  nonFiniteSteps = 0;
 
   constructor(opts: {
     mujoco: Mujoco;
@@ -213,6 +219,15 @@ export class VecEnv {
     for (let j = 0; j < NUM_JOINTS; j++) this.#obs[i++] = lastAction[j];
     this.#obs.fill(0, i, base + OBS_SIZE);
     this.#obsPipeline.apply(this.#ctx(envId), this.#obs, base);
+    // Same reasoning as the reward guard: a non-finite observation would reach
+    // the policy AND the running normaliser, and the normaliser never
+    // recovers.
+    for (let k = base; k < base + OBS_SIZE; k++) {
+      if (!Number.isFinite(this.#obs[k])) {
+        this.#obs[k] = 0;
+        this.nonFiniteSteps++;
+      }
+    }
   }
 
   /**
@@ -236,6 +251,15 @@ export class VecEnv {
         const value = term.compute(ctx, state) * term.weight;
         this.breakdown[term.name] += value;
         total += value;
+      }
+      // A diverged solver produces NaN, and the nan_state termination below
+      // resets the environment — but the reward for THIS step is computed
+      // first, so without this guard the NaN reaches the rollout buffer,
+      // poisons the advantage normalisation, and from there every gradient.
+      // One exploded contact then destroys the policy permanently.
+      if (!Number.isFinite(total)) {
+        total = 0;
+        this.nonFiniteSteps++;
       }
       this.#reward[e] = total;
 

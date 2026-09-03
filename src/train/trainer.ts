@@ -46,6 +46,8 @@ export interface IterationStats extends UpdateStats {
   episodeReturn: number;
   episodes: number;
   standingFraction: number;
+  /** Environment-steps where physics diverged; should stay 0. */
+  nonFiniteSteps: number;
   totalSteps: number;
   rolloutMs: number;
   updateMs: number;
@@ -165,6 +167,7 @@ export class Trainer {
     let standingSteps = 0;
     let finishedEpisodes = 0;
     let finishedReturn = 0;
+    const nonFiniteBefore = this.env.nonFiniteSteps;
     this.env.resetBreakdown();
 
     const rolloutStart = performance.now();
@@ -218,6 +221,7 @@ export class Trainer {
       episodeReturn: finishedEpisodes > 0 ? finishedReturn / finishedEpisodes : 0,
       episodes: finishedEpisodes,
       standingFraction: standingSteps / total,
+      nonFiniteSteps: this.env.nonFiniteSteps - nonFiniteBefore,
       totalSteps: this.#totalSteps,
       rolloutMs,
       updateMs,
