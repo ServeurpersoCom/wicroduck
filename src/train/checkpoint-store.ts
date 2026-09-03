@@ -45,6 +45,55 @@ export interface CheckpointInfo {
   modified: number;
 }
 
+/** Filenames, so keep them tame. Shared by every entry point that names one. */
+export function sanitizeName(raw: string): string {
+  return raw.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64);
+}
+
+export async function checkpointExists(name: string): Promise<boolean> {
+  try {
+    await (await dir()).getFileHandle(`${name}.json`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Rename by copy-then-delete rather than FileSystemHandle.move(), which is
+ * Chromium-only. A checkpoint is a couple of megabytes; the copy is cheap and
+ * it works everywhere OPFS does.
+ */
+export async function renameCheckpoint(from: string, to: string): Promise<void> {
+  if (from === to) return;
+  const data = await loadCheckpoint<unknown>(from);
+  if (data === null) throw new Error(`no checkpoint named "${from}"`);
+  await saveCheckpoint(to, data);
+  await deleteCheckpoint(from);
+}
+
+/** The raw file, for download. */
+export async function readCheckpointFile(name: string): Promise<File> {
+  const handle = await (await dir()).getFileHandle(`${name}.json`);
+  return handle.getFile();
+}
+
+/** Store a checkpoint that came from outside — a download from another
+ *  machine. Validated enough to fail loudly rather than at training time. */
+export async function importCheckpoint(name: string, text: string): Promise<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("not valid JSON");
+  }
+  const c = parsed as { version?: number; policy?: unknown; iteration?: number };
+  if (c.version !== 1 || !c.policy || typeof c.iteration !== "number") {
+    throw new Error("not a wicroduck checkpoint");
+  }
+  await saveCheckpoint(name, parsed);
+}
+
 export async function listCheckpoints(): Promise<CheckpointInfo[]> {
   const out: CheckpointInfo[] = [];
   try {

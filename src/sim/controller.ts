@@ -10,7 +10,7 @@ import {
   ACTION_SCALE, CMD_SIZE, CTRL_DT, DECIMATION, DEFAULT_POSE, FALLEN_GZ,
   GYRO_SENSOR, JOINT_NAMES, NUM_JOINTS, OBS_SIZE, TRUNK_BODY, UPRIGHT_GZ,
 } from "./microduck.ts";
-import type { Policy } from "./policy.ts";
+import type { PolicyRunner } from "./policy.ts";
 import type { Simulation } from "./scene.ts";
 
 /**
@@ -74,9 +74,9 @@ export class MicroduckController {
   onRecoveryEnd: ((succeeded: boolean) => void) | null = null;
 
   private readonly sim: Simulation;
-  private readonly policy: Policy;
+  private policy: PolicyRunner;
 
-  constructor(sim: Simulation, policy: Policy) {
+  constructor(sim: Simulation, policy: PolicyRunner) {
     this.sim = sim;
     this.policy = policy;
     const { mujoco, model } = sim;
@@ -188,6 +188,18 @@ export class MicroduckController {
     this.phaseSteps = 0;
     this.fallenSteps = 0;
     if (phase !== "recovering") this.uprightSteps = 0;
+  }
+
+  /** Swap the driving policy without disturbing the simulation. lastAction is
+   *  cleared because it is part of the observation and belonged to the old
+   *  policy's action distribution. */
+  setPolicy(policy: PolicyRunner): void {
+    this.policy = policy;
+    this.lastAction.fill(0);
+  }
+
+  get policyLabel(): string {
+    return this.policy.label;
   }
 
   /** Start a get-up attempt from wherever the duck currently is. */

@@ -58,6 +58,8 @@ export interface Checkpoint {
   version: 1;
   iteration: number;
   totalSteps: number;
+  /** Which task this was trained on, for the UI. Older files omit it. */
+  task?: string;
   config: TrainerConfig;
   policy: unknown;
   optimizer: ReturnType<Adam["serialize"]>;
@@ -107,6 +109,7 @@ export class Trainer {
   #totalSteps = 0;
   /** Undiscounted return accumulating per environment, reset on episode end. */
   #episodeReturn: Float32Array;
+  readonly #specName: string;
 
   constructor(opts: {
     mujoco: Mujoco;
@@ -118,6 +121,7 @@ export class Trainer {
     kernels?: Kernels | null;
   }) {
     this.config = opts.config;
+    this.#specName = opts.spec.name;
     this.#rng = new SeededRng(opts.config.seed);
     this.env = new VecEnv({
       mujoco: opts.mujoco,
@@ -264,6 +268,7 @@ export class Trainer {
       version: 1,
       iteration: this.#iteration,
       totalSteps: this.#totalSteps,
+      task: this.#specName,
       config: this.config,
       policy: this.ac.serialize(),
       optimizer: this.#opt.serialize(),

@@ -19,6 +19,13 @@
       view: "train" as View,
     },
     {
+      state: "ready",
+      title: "Watch what you trained",
+      body: "Save a run, then pick it as the driving policy in Simulate. Download it from Files to keep it.",
+      action: "Open Files",
+      view: "files" as View,
+    },
+    {
       state: "soon",
       title: "Export and deploy",
       body: "Send a trained policy to a real duck. Needs ONNX export and the BAM actuator model first.",
@@ -76,6 +83,13 @@
       title: "Expect to be cheated, twice",
       where: "",
       body: "The first policy will find something that scores well and looks nothing like the skill. Hopping on one foot. Leaning on the raised leg. That is normal; tighten the reward and go again.",
+      code: null,
+    },
+    {
+      n: 7,
+      title: "Watch it",
+      where: "Save as… → Simulate",
+      body: "Save the run under a name, then pick it as the driving policy in Simulate. Reading a reward curve is not the same as seeing what the policy actually does.",
       code: null,
     },
   ];

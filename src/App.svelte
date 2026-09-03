@@ -5,6 +5,7 @@
   import StatusBar from "./lib/StatusBar.svelte";
   import TrainView from "./lib/TrainView.svelte";
   import GuideView from "./lib/GuideView.svelte";
+  import FilesView from "./lib/FilesView.svelte";
   import { Session } from "./lib/session.svelte";
   import type { View } from "./lib/views.ts";
 
@@ -12,6 +13,7 @@
     guide: { title: "Guide", crumb: "What this is and how to use it" },
     sim: { title: "Simulate", crumb: "Microduck · stand-up policy" },
     train: { title: "Train", crumb: "Microduck · PPO" },
+    files: { title: "Files", crumb: "Checkpoints saved in this browser" },
   };
 
   const session = new Session();
@@ -24,7 +26,12 @@
   // background would skew the throughput harness next door.
   let simMounted = $state(false);
   $effect(() => {
-    if (view === "sim") simMounted = true;
+    if (view === "sim") {
+      simMounted = true;
+      // A run saved in the Train workspace after this list was first built
+      // should still show up in the policy picker.
+      if (session.ready) void session.refreshPolicies();
+    }
     session.setActive(view === "sim");
   });
 </script>
@@ -49,6 +56,8 @@
     <Inspector {session} />
   {:else if view === "train"}
     <TrainView />
+  {:else if view === "files"}
+    <FilesView />
   {:else}
     <GuideView go={(v) => (view = v)} />
   {/if}

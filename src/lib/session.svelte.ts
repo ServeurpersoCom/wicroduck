@@ -6,7 +6,8 @@
 // a worker or a different shell without dragging the UI along.
 
 import { loadSimulation, type Simulation } from "../sim/scene.ts";
-import { Policy } from "../sim/policy.ts";
+import { CheckpointPolicy, Policy, type PolicyRunner } from "../sim/policy.ts";
+import { listCheckpoints, loadCheckpoint } from "../train/checkpoint-store.ts";
 import { MicroduckController, type Phase } from "../sim/controller.ts";
 import { CTRL_DT, TRUNK_BODY } from "../sim/microduck.ts";
 import { Viewer } from "../render/viewer.ts";
@@ -14,6 +15,13 @@ import { assetUrl } from "../asset-url.ts";
 
 export const POLICY_NAME = "alpha_stand.onnx";
 const POLICY_URL = assetUrl(`policies/${POLICY_NAME}`);
+
+/** Where a policy came from. `checkpoint` entries are runs trained here. */
+export interface PolicyOption {
+  id: string;
+  label: string;
+  kind: "shipped" | "checkpoint";
+}
 
 /** Never advance more than this much sim time per frame: after a tab switch
  *  the elapsed time can be seconds, and catching up would freeze the page. */
@@ -47,12 +55,24 @@ export class Session {
   heightCm = $state(0);
   policyHz = $state(0);
 
+  /** Everything the viewport can be driven by: the shipped checkpoint plus
+   *  every run saved from the Train workspace. */
+  policies = $state<PolicyOption[]>([{ id: POLICY_NAME, label: POLICY_NAME, kind: "shipped" }]);
+  activePolicy = $state(POLICY_NAME);
+  policyError = $state<string | null>(null);
+  policyBusy = $state(false);
+
   #autoRepeat = $state(false);
   get autoRepeat(): boolean {
     return this.#autoRepeat;
   }
 
   #showCollision = $state(false);
+  /** Label for whichever policy is currently driving. */
+  get activePolicyLabel(): string {
+    return this.policies.find((p) => p.id === this.activePolicy)?.label ?? this.activePolicy;
+  }
+
   get showCollision(): boolean {
     return this.#showCollision;
   }
@@ -106,6 +126,10 @@ export class Session {
       viewer.setCollisionVisible(this.#showCollision);
       viewer.sync(sim.model, sim.data);
 
+      // Awaited, not fired-and-forgotten: the selector must be populated
+      // before `ready` flips, or a run saved earlier is missing from it until
+      // something else happens to trigger a refresh.
+      await this.refreshPolicies();
       const controller = new MicroduckController(sim, policy);
       controller.onRecoveryEnd = () => {
         if (!this.#autoRepeat) return;
@@ -177,6 +201,44 @@ export class Session {
       this.#frame = requestAnimationFrame(() => void tick());
     };
     void tick();
+  }
+
+  /** Re-read the saved runs. Cheap, and the Train workspace can add one at
+   *  any time. */
+  async refreshPolicies(): Promise<void> {
+    const saved = await listCheckpoints();
+    this.policies = [
+      { id: POLICY_NAME, label: POLICY_NAME, kind: "shipped" },
+      ...saved.map((c) => ({ id: `ckpt:${c.name}`, label: c.name, kind: "checkpoint" as const })),
+    ];
+    // A run deleted elsewhere should not leave the selector pointing at it.
+    if (!this.policies.some((p) => p.id === this.activePolicy)) {
+      this.activePolicy = POLICY_NAME;
+    }
+  }
+
+  /** Swap the driving policy in place — the duck keeps its current pose. */
+  async selectPolicy(id: string): Promise<void> {
+    if (!this.#controller || this.policyBusy) return;
+    this.policyBusy = true;
+    this.policyError = null;
+    try {
+      let runner: PolicyRunner;
+      if (id.startsWith("ckpt:")) {
+        const name = id.slice(5);
+        const ckpt = await loadCheckpoint<unknown>(name);
+        if (!ckpt) throw new Error(`checkpoint "${name}" is gone`);
+        runner = new CheckpointPolicy(ckpt, name);
+      } else {
+        runner = await Policy.load(POLICY_URL, POLICY_NAME);
+      }
+      this.#controller.setPolicy(runner);
+      this.activePolicy = id;
+    } catch (err) {
+      this.policyError = err instanceof Error ? err.message : String(err);
+    } finally {
+      this.policyBusy = false;
+    }
   }
 
   setActive(value: boolean): void {

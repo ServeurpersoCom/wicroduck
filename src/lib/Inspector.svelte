@@ -1,6 +1,6 @@
 <script lang="ts">
   import { CTRL_DT, OBS_SIZE, NUM_JOINTS, TIMESTEP } from "../sim/microduck.ts";
-  import { POLICY_NAME, type Session } from "./session.svelte";
+  import { type Session } from "./session.svelte";
 
   const { session }: { session: Session } = $props();
 
@@ -11,8 +11,23 @@
 <aside class="inspector">
   <section>
     <h2>Policy</h2>
+    <label class="picker">
+      <select
+        value={session.activePolicy}
+        disabled={!session.ready || session.policyBusy}
+        onchange={(e) => void session.selectPolicy(e.currentTarget.value)}
+      >
+        {#each session.policies as p (p.id)}
+          <option value={p.id}>{p.label}{p.kind === "checkpoint" ? " (trained here)" : ""}</option>
+        {/each}
+      </select>
+    </label>
+    {#if session.policyError}
+      <p class="err">{session.policyError}</p>
+    {:else if session.policies.length === 1}
+      <p class="hint">Train a policy and save it to run it here.</p>
+    {/if}
     <dl>
-      <div><dt>Checkpoint</dt><dd class="mono">{POLICY_NAME}</dd></div>
       <div><dt>Interface</dt><dd class="mono">{OBS_SIZE} → {NUM_JOINTS}</dd></div>
       <div><dt>Control</dt><dd class="mono">{controlHz} Hz</dd></div>
       <div><dt>Physics</dt><dd class="mono">{physicsHz} Hz</dd></div>
@@ -74,6 +89,15 @@
   dt { color: var(--muted); }
   dd { margin: 0; text-align: right; overflow-wrap: anywhere; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+
+  .picker select {
+    width: 100%; font: inherit; font-size: 11px; color: var(--ink);
+    background: var(--panel-hi); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 6px;
+  }
+  .picker select:disabled { opacity: 0.5; }
+  .hint, .err { margin: 0; font-size: 10px; line-height: 1.5; color: var(--muted); }
+  .err { color: var(--danger); }
 
   .stack { display: flex; flex-direction: column; gap: 6px; }
   .row { display: flex; gap: 6px; }

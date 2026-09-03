@@ -53,10 +53,13 @@ async function init(baseUrl: string, options: TrainInit): Promise<void> {
   });
 }
 
-async function save(): Promise<void> {
+/** `name` lets a run be saved under something memorable; the autosave keeps
+ *  using the session's rolling slot so the two never fight. */
+async function save(name?: string): Promise<void> {
   if (!trainer || !cfg) return;
-  await saveCheckpoint(cfg.checkpointName, trainer.checkpoint());
-  post({ type: "saved", name: cfg.checkpointName, iteration: trainer.iteration });
+  const target = name ?? cfg.checkpointName;
+  await saveCheckpoint(target, trainer.checkpoint());
+  post({ type: "saved", name: target, iteration: trainer.iteration });
 }
 
 /**
@@ -91,7 +94,7 @@ self.onmessage = (e: MessageEvent<ToTrainWorker>) => {
     if (msg.type === "init") void init(msg.baseUrl, msg.init).catch(fail);
     else if (msg.type === "start") void run(msg.iterations).catch(fail);
     else if (msg.type === "stop") running = false;
-    else if (msg.type === "save") void save().catch(fail);
+    else if (msg.type === "save") void save(msg.name).catch(fail);
     else if (msg.type === "dispose") {
       running = false;
       trainer = null;

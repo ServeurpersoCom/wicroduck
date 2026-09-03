@@ -4,9 +4,10 @@ import { assetBase } from "../asset-url.ts";
 import { DEFAULT_PPO } from "../train/ppo.ts";
 import { DEFAULT_TRAINER, type IterationStats, type TrainerConfig } from "../train/trainer.ts";
 import type { FromTrainWorker, ToTrainWorker } from "../train/train-protocol.ts";
-import { listCheckpoints, opfsAvailable, type CheckpointInfo } from "../train/checkpoint-store.ts";
+import { deleteCheckpoint, listCheckpoints, opfsAvailable, type CheckpointInfo } from "../train/checkpoint-store.ts";
 
-const CHECKPOINT = "current";
+/** The rolling autosave slot. Named saves live alongside it. */
+const AUTOSAVE = "autosave";
 /** Points kept for the sparkline; older ones are dropped. */
 const HISTORY = 400;
 
@@ -35,6 +36,9 @@ export class TrainingSession {
   history = $state<HistoryPoint[]>([]);
   checkpoints = $state<CheckpointInfo[]>([]);
   savedAt = $state(0);
+  savedName = $state<string | null>(null);
+  /** Which stored run "Resume" continues from; null means the autosave. */
+  resumeFrom = $state<string | null>(null);
 
   readonly opfs = opfsAvailable();
   #worker: Worker | null = null;
@@ -107,6 +111,7 @@ export class TrainingSession {
         this.history = next.length > HISTORY ? next.slice(next.length - HISTORY) : next;
       } else if (msg.type === "saved") {
         this.savedAt = msg.iteration;
+        this.savedName = msg.name;
         void this.refreshCheckpoints();
       } else if (msg.type === "stopped") {
         this.status = "stopped";
@@ -128,7 +133,7 @@ export class TrainingSession {
         task: this.task,
         config: this.#config(),
         autosaveEvery: 25,
-        checkpointName: CHECKPOINT,
+        checkpointName: resume ? (this.resumeFrom ?? AUTOSAVE) : AUTOSAVE,
         resume,
       },
     });
@@ -138,8 +143,23 @@ export class TrainingSession {
     this.#send({ type: "stop" });
   }
 
-  save(): void {
-    this.#send({ type: "save" });
+  /** Save the run under a name so it can be replayed in Simulate or continued
+   *  later. Returns false if the user cancelled the prompt. */
+  saveAs(): boolean {
+    const suggested = `${this.task}-${this.iteration}`;
+    const raw = globalThis.prompt?.("Save this run as:", suggested);
+    if (raw === null || raw === undefined) return false;
+    // Checkpoint names become filenames in OPFS, so keep them tame.
+    const name = raw.trim().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+    if (!name) return false;
+    this.#send({ type: "save", name });
+    return true;
+  }
+
+  async remove(name: string): Promise<void> {
+    await deleteCheckpoint(name);
+    if (this.resumeFrom === name) this.resumeFrom = null;
+    await this.refreshCheckpoints();
   }
 
   #send(msg: ToTrainWorker): void {

@@ -103,8 +103,10 @@ export class ActorCritic {
   readonly hidden: readonly number[];
 
   constructor(
-    obsDim = OBS_SIZE,
-    actDim = NUM_JOINTS,
+    // Widened explicitly: NUM_JOINTS is a literal type (JOINT_NAMES is
+    // `as const`), which would make actDim `14` rather than `number`.
+    obsDim: number = OBS_SIZE,
+    actDim: number = NUM_JOINTS,
     rng: () => number = Math.random,
     initStd = 1.0,
     /** Defaults to the reference architecture; smaller nets are for tests and

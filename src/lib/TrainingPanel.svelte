@@ -52,9 +52,13 @@
     </div>
     <div class="buttons">
       {#if busy}
+        <button onclick={() => s.saveAs()} disabled={!s.iteration}>Save as…</button>
         <button onclick={() => s.stop()}>Stop</button>
       {:else}
         <button class="primary" onclick={() => void s.start(false)}>Train</button>
+        {#if s.iteration}
+          <button onclick={() => s.saveAs()}>Save as…</button>
+        {/if}
         {#if s.checkpoints.length}
           <button onclick={() => void s.start(true)}>Resume</button>
         {/if}
@@ -129,12 +133,38 @@
     </dl>
   {/if}
 
+  {#if s.checkpoints.length}
+    <div class="runs">
+      <h4>Saved runs</h4>
+      <p class="runs-hint">
+        Pick one to continue with <strong>Resume</strong>; any of them can also
+        be selected as the driving policy in <strong>Simulate</strong>.
+      </p>
+      <ul>
+        {#each s.checkpoints as c (c.name)}
+          <li class:picked={(s.resumeFrom ?? "") === c.name}>
+            <button
+              class="pick"
+              disabled={busy}
+              onclick={() => (s.resumeFrom = s.resumeFrom === c.name ? null : c.name)}
+            >{c.name}</button>
+            <span class="meta">
+              {(c.bytes / 1024 ** 2).toFixed(1)} MB ·
+              {new Date(c.modified).toLocaleTimeString()}
+            </span>
+            <button class="del" disabled={busy} onclick={() => void s.remove(c.name)}>Delete</button>
+          </li>
+        {/each}
+      </ul>
+    </div>
+  {/if}
+
   <p class="foot">
     {#if !s.opfs}
       Checkpoints unavailable — this browser has no OPFS.
     {:else if s.checkpoints.length}
       {#if s.savedAt}
-        Checkpoint saved at iteration {s.savedAt}
+        Saved “{s.savedName}” at iteration {s.savedAt}
       {:else}
         Checkpoint available
       {/if}
@@ -206,5 +236,30 @@
   .stats dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
   .foot { font-size: 10px; color: var(--muted); }
+
+  .runs { display: flex; flex-direction: column; gap: 6px; }
+  h4 {
+    margin: 0; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted);
+  }
+  .runs-hint { margin: 0; font-size: 11px; }
+  .runs ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  .runs li {
+    display: flex; align-items: center; gap: 10px;
+    padding: 4px 8px; border-radius: 6px;
+    border: 1px solid transparent; font-size: 11px;
+  }
+  .runs li.picked { border-color: var(--accent); background: var(--panel); }
+  .pick {
+    padding: 0; border: 0; background: none; font: inherit; font-weight: 600;
+    color: var(--ink); cursor: pointer;
+  }
+  .pick:hover { color: var(--accent); }
+  .meta { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .del {
+    margin-left: auto; padding: 2px 8px; font-size: 10px; font-weight: 500;
+    color: var(--muted); background: none; border: 1px solid var(--line);
+  }
+  .del:hover { color: var(--danger); border-color: var(--danger); }
   .error { color: var(--danger); font-size: 12px; }
 </style>

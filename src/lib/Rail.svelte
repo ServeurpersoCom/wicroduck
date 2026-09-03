@@ -31,10 +31,14 @@
               <path d="M12 2.6 21 7.4v9.2L12 21.4 3 16.6V7.4z" />
               <path d="M3 7.4 12 12m0 0 9-4.6M12 12v9.4" />
             </svg>
-          {:else}
+          {:else if item.id === "train"}
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M3 20h18" />
               <path d="M5 20V9m4.7 11V4m4.6 16v-7M19 20v-4" />
+            </svg>
+          {:else}
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h9A1.5 1.5 0 0 1 21 10v7.5A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5z" />
             </svg>
           {/if}
           <span class="label">

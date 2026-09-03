@@ -40,8 +40,13 @@ telemetry.
 
 - **Guide** — the landing page: what this does, and a worked example of
   teaching the duck a new skill.
-- **Simulate** — the viewport and the stand-up demo.
+- **Simulate** — the viewport. Driven by the shipped `alpha_stand` checkpoint
+  or by any policy you trained here.
 - **Train** — the throughput harness, the vectorized environment, and PPO.
+  Save a run under a name to replay it in Simulate or continue it later.
+- **Files** — the saved runs. Checkpoints live in the browser's private
+  filesystem rather than a folder you can browse, so they get a manager:
+  download, upload, rename, delete.
 
 The simulator loads on the first visit to Simulate rather than at startup —
 it is a 21 MB download and nobody reading the Guide asked for it. After that

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { PHASE_LABEL, POLICY_NAME, type Session } from "./session.svelte";
+  import { PHASE_LABEL, type Session } from "./session.svelte";
 
   const { session }: { session: Session } = $props();
 </script>
@@ -18,7 +18,10 @@
     <span class="dim">Simulator loads on first visit</span>
   {/if}
   <span class="spacer"></span>
-  <span class="dim">MuJoCo WASM · onnxruntime-web · {POLICY_NAME}</span>
+  <!-- The ACTIVE policy, not the shipped one: the viewport can be driven by a
+       run trained here, and saying otherwise would be a lie in the one place
+       that is always on screen. -->
+  <span class="dim">MuJoCo WASM · {session.activePolicyLabel}</span>
 </footer>
 
 <style>

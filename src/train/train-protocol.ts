@@ -18,7 +18,7 @@ export type ToTrainWorker =
   | { type: "init"; baseUrl: string; init: TrainInit }
   | { type: "start"; iterations: number }
   | { type: "stop" }
-  | { type: "save" }
+  | { type: "save"; name?: string }
   | { type: "dispose" };
 
 export type FromTrainWorker =
