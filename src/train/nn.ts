@@ -15,6 +15,8 @@ const elu = (x: number) => (x >= 0 ? x : Math.exp(x) - 1);
 /** d/dx ELU, expressed via the OUTPUT so the forward pass need not be kept. */
 const eluGradFromOutput = (y: number) => (y >= 0 ? 1 : y + 1);
 
+import type { Kernels } from "./kernels/index.ts";
+
 export interface Layer {
   /** Row-major [out, in]. */
   w: Float32Array;
@@ -25,17 +27,23 @@ export interface Layer {
   outDim: number;
 }
 
-function makeLayer(inDim: number, outDim: number, rng: () => number, gain: number): Layer {
-  const w = new Float32Array(inDim * outDim);
+function makeLayer(
+  inDim: number,
+  outDim: number,
+  rng: () => number,
+  gain: number,
+  alloc: (n: number) => Float32Array,
+): Layer {
+  const w = alloc(inDim * outDim);
   // Orthogonal-ish init is what rsl_rl uses; He-scaled uniform is close enough
   // for a net this small and avoids a QR decomposition here.
   const scale = gain * Math.sqrt(2 / inDim);
   for (let i = 0; i < w.length; i++) w[i] = (rng() * 2 - 1) * scale;
   return {
     w,
-    b: new Float32Array(outDim),
-    dw: new Float32Array(inDim * outDim),
-    db: new Float32Array(outDim),
+    b: alloc(outDim),
+    dw: alloc(inDim * outDim),
+    db: alloc(outDim),
     inDim,
     outDim,
   };
@@ -51,12 +59,18 @@ export class MlpNet {
   #input: Float32Array | null = null;
   /** Reusable per-block activation gradients; see backward(). */
   readonly #gyBlock = new Float32Array(8);
+  #chained: Float32Array[] = [];
+  #inputStage: Float32Array | null = null;
   /**
    * Whether backward() should produce the gradient with respect to its INPUT.
    * False for a net whose input is data — the only caller that needs it would
    * be one stacking another differentiable module underneath.
    */
   keepInputGrad = false;
+
+  /** When present, parameters and activations live in the kernel heap and the
+   *  SIMD kernels run instead of the loops below. */
+  readonly #kernels: Kernels | null;
 
   constructor(
     inDim: number,
@@ -65,23 +79,50 @@ export class MlpNet {
     rng: () => number = Math.random,
     /** rsl_rl scales the final layer down so the initial policy is near-zero. */
     outputGain = 0.01,
+    kernels: Kernels | null = null,
   ) {
+    this.#kernels = kernels;
     const dims = [inDim, ...hidden, outDim];
     for (let i = 0; i < dims.length - 1; i++) {
       const last = i === dims.length - 2;
-      this.layers.push(makeLayer(dims[i], dims[i + 1], rng, last ? outputGain : 1));
+      this.layers.push(
+        makeLayer(dims[i], dims[i + 1], rng, last ? outputGain : 1, (n) => this.#alloc(n)),
+      );
     }
+  }
+
+  #alloc(length: number): Float32Array {
+    return this.#kernels ? this.#kernels.alloc(length) : new Float32Array(length);
+  }
+
+  get usesSimd(): boolean {
+    return this.#kernels !== null;
   }
 
   get paramCount(): number {
     return this.layers.reduce((n, l) => n + l.w.length + l.b.length, 0);
   }
 
+  /**
+   * Size the scratch buffers for the largest batch seen so far.
+   *
+   * Grow-only, not resize-on-change: training alternates between the rollout
+   * batch (one per environment) and the PPO minibatch every iteration, and
+   * reallocating on each switch churns — fatally so against the kernel heap,
+   * which is a bump allocator that never frees.
+   */
   #ensureBatch(batch: number): void {
-    if (this.#batch === batch) return;
+    if (batch <= this.#batch) return;
     this.#batch = batch;
-    this.#acts = this.layers.map((l) => new Float32Array(batch * l.outDim));
-    this.#grads = this.layers.map((l) => new Float32Array(batch * l.inDim));
+    this.#acts = this.layers.map((l) => this.#alloc(batch * l.outDim));
+    this.#grads = this.layers.map((l) => this.#alloc(batch * l.inDim));
+    // The activation-chained gradient the backward kernel consumes; JS does
+    // the chaining because it needs this layer's own outputs.
+    this.#chained = this.layers.map((l) => this.#alloc(batch * l.outDim));
+    // The caller's input is an ordinary JS array; the kernels can only read
+    // their own heap, so it is staged here once per forward. 192x61 floats
+    // against 75M multiply-accumulates — the copy does not register.
+    this.#inputStage = this.#kernels ? this.#alloc(batch * this.layers[0].inDim) : null;
   }
 
   /**
@@ -99,12 +140,24 @@ export class MlpNet {
    */
   forward(x: Float32Array, batch: number): Float32Array {
     this.#ensureBatch(batch);
-    this.#input = x;
-    let cur = x;
+    if (this.#inputStage) {
+      // Staged, and remembered as the input: backward's first layer reads it
+      // again and must find it inside the kernel heap too.
+      this.#inputStage.set(x.subarray(0, batch * this.layers[0].inDim));
+      this.#input = this.#inputStage;
+    } else {
+      this.#input = x;
+    }
+    let cur = this.#input;
     for (let li = 0; li < this.layers.length; li++) {
       const { w, b, inDim, outDim } = this.layers[li];
       const out = this.#acts[li];
       const isLast = li === this.layers.length - 1;
+      if (this.#kernels) {
+        this.#kernels.gemmForward(cur, w, b, out, batch, inDim, outDim, !isLast);
+        cur = out;
+        continue;
+      }
       const n8 = batch - (batch % 8);
       for (let n = 0; n < n8; n += 8) {
         const xb = n * inDim, ob = n * outDim;
@@ -148,7 +201,9 @@ export class MlpNet {
       }
       cur = out;
     }
-    return cur;
+    // Buffers are sized for the largest batch seen, so hand back only the rows
+    // this call actually produced.
+    return cur.subarray(0, batch * this.layers[this.layers.length - 1].outDim);
   }
 
   zeroGrad(): void {
@@ -177,6 +232,24 @@ export class MlpNet {
       if (wantInputGrad) gIn.fill(0);
       const isLast = li === this.layers.length - 1;
       const act = this.#acts[li];
+      if (this.#kernels) {
+        // The kernel takes the ALREADY activation-chained gradient, because
+        // chaining needs this layer's own outputs and doing it here keeps the
+        // kernel a plain GEMM.
+        const chained = this.#chained[li];
+        if (isLast) {
+          chained.set(g.subarray(0, batch * outDim));
+        } else {
+          for (let j = 0; j < batch * outDim; j++) {
+            chained[j] = g[j] * eluGradFromOutput(act[j]);
+          }
+        }
+        this.#kernels.gemmBackward(
+          chained, input, w, dw, db, gIn, batch, inDim, outDim, wantInputGrad,
+        );
+        g = gIn;
+        continue;
+      }
 
       // Eight samples per weight row, matching forward. Backward does two
       // multiply-accumulates per element against forward's one — dw and gIn —

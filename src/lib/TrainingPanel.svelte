@@ -144,6 +144,9 @@
       Autosaves to the browser's private filesystem every 25 iterations, so a
       run survives a reload.
     {/if}
+    {#if s.paramCount}
+      · {s.simd ? "SIMD kernels" : "JavaScript fallback"}
+    {/if}
   </p>
 </section>
 

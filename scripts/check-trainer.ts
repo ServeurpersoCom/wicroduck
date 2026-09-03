@@ -19,6 +19,7 @@ import { loadModelFromDisk } from "../src/train/model-loader.ts";
 import { holdPoseSpec } from "../src/train/env/standup.ts";
 import { DEFAULT_TRAINER, Trainer, type TrainerConfig } from "../src/train/trainer.ts";
 import { DEFAULT_PPO } from "../src/train/ppo.ts";
+import { loadKernelsFromDisk } from "../src/train/kernels/load.node.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MODEL_DIR = path.join(ROOT, "public/model/microduck");
@@ -58,10 +59,12 @@ const config: TrainerConfig = {
   },
 };
 
-const trainer = new Trainer({ mujoco, model, standKey, spec: holdPoseSpec(), config });
+const kernels = await loadKernelsFromDisk();
+const trainer = new Trainer({ mujoco, model, standKey, spec: holdPoseSpec(), config, kernels });
 console.log(
   `hold-pose: ${config.envs} envs x ${config.stepsPerIter} steps, ` +
-  `net ${config.hidden.join("/")}, ${trainer.ac.actor.paramCount + trainer.ac.critic.paramCount} params`,
+  `net ${config.hidden.join("/")}, ${trainer.ac.actor.paramCount + trainer.ac.critic.paramCount} params, ` +
+  `${trainer.usesSimd ? "SIMD kernels" : "JavaScript"}`,
 );
 
 const EVAL_STEPS = 150; // one full 3 s episode
@@ -102,7 +105,7 @@ console.log(`first-minibatch KL (must be ~0): ${firstKl.toExponential(2)}`);
 const ckpt = JSON.parse(JSON.stringify(trainer.checkpoint()));
 const evalAfterSave = trainer.evaluate(20);
 
-const restored = new Trainer({ mujoco, model, standKey, spec: holdPoseSpec(), config });
+const restored = new Trainer({ mujoco, model, standKey, spec: holdPoseSpec(), config, kernels });
 restored.restore(ckpt);
 const evalRestored = restored.evaluate(20);
 

@@ -18,7 +18,7 @@ import { loadModelFromDisk } from "../src/train/model-loader.ts";
 import { holdPoseSpec } from "../src/train/env/standup.ts";
 import { VecEnv } from "../src/train/env/vec-env.ts";
 import { ActorCritic } from "../src/train/ac-policy.ts";
-import { MlpNet } from "../src/train/nn.ts";
+import { loadKernelsFromDisk } from "../src/train/kernels/load.node.ts";
 import { DEFAULT_PPO, makeBuffer, ppoUpdate } from "../src/train/ppo.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -49,6 +49,8 @@ function timeIt(reps: number, fn: () => void): number {
 }
 
 const { mujoco, model, standKey } = await loadModelFromDisk(MODEL_DIR, ROBOT_XML, fs, path);
+const kernels = await loadKernelsFromDisk();
+console.log(kernels ? "kernels: SIMD wasm" : "kernels: JavaScript fallback");
 
 const ENVS = 32;
 const STEPS = 24;
@@ -69,7 +71,7 @@ console.log(
 for (const { label, hidden } of NETS) {
   const rng = mulberry32(1);
   const env = new VecEnv({ mujoco, model, standKey, spec: holdPoseSpec(), count: ENVS, rng });
-  const ac = new ActorCritic(OBS_SIZE, NUM_JOINTS, rng, 0.1, hidden);
+  const ac = new ActorCritic(OBS_SIZE, NUM_JOINTS, rng, 0.1, hidden, kernels);
   const opt = ac.makeOptimizer(DEFAULT_PPO.lr);
   const buf = makeBuffer(STEPS, ENVS, OBS_SIZE, NUM_JOINTS);
   const actions = new Float32Array(ENVS * NUM_JOINTS);

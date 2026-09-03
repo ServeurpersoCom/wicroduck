@@ -15,6 +15,7 @@ import { ActorCritic, HIDDEN } from "./ac-policy.ts";
 import { Adam } from "./nn.ts";
 import { DEFAULT_PPO, makeBuffer, ppoUpdate, type PpoConfig, type RolloutBuffer, type UpdateStats } from "./ppo.ts";
 import { VecEnv, type EnvSpec } from "./env/vec-env.ts";
+import type { Kernels } from "./kernels/index.ts";
 import { STAND_Z } from "./env/rewards.ts";
 
 export interface TrainerConfig {
@@ -111,6 +112,8 @@ export class Trainer {
     standKey: number;
     spec: EnvSpec;
     config: TrainerConfig;
+    /** SIMD kernels for the nets; null falls back to the JS path. */
+    kernels?: Kernels | null;
   }) {
     this.config = opts.config;
     this.#rng = new SeededRng(opts.config.seed);
@@ -128,6 +131,7 @@ export class Trainer {
       this.#rng.next,
       opts.config.initStd,
       opts.config.hidden,
+      opts.kernels ?? null,
     );
     this.#opt = this.ac.makeOptimizer(opts.config.ppo.lr);
     this.#buf = makeBuffer(
@@ -145,6 +149,10 @@ export class Trainer {
 
   get totalSteps(): number {
     return this.#totalSteps;
+  }
+
+  get usesSimd(): boolean {
+    return this.ac.actor.usesSimd;
   }
 
   /** One rollout + one PPO update. */

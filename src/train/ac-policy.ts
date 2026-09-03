@@ -11,6 +11,7 @@
 import { NUM_JOINTS, OBS_SIZE } from "../sim/microduck.ts";
 import { gaussianEntropy, gaussianLogProb, sampleNormal } from "./distribution.ts";
 import { Adam, MlpNet, clipGradNorm } from "./nn.ts";
+import type { Kernels } from "./kernels/index.ts";
 
 export const HIDDEN = [512, 256, 128] as const;
 
@@ -109,12 +110,14 @@ export class ActorCritic {
     /** Defaults to the reference architecture; smaller nets are for tests and
      *  for trading capacity against wall clock on a slow machine. */
     hidden: readonly number[] = HIDDEN,
+    /** When present both nets run the SIMD kernels; null is the JS path. */
+    kernels: Kernels | null = null,
   ) {
     this.obsDim = obsDim;
     this.actDim = actDim;
     this.hidden = hidden;
-    this.actor = new MlpNet(obsDim, actDim, hidden, rng, 0.01);
-    this.critic = new MlpNet(obsDim, 1, hidden, rng, 1.0);
+    this.actor = new MlpNet(obsDim, actDim, hidden, rng, 0.01, kernels);
+    this.critic = new MlpNet(obsDim, 1, hidden, rng, 1.0, kernels);
     this.logStd = new Float32Array(actDim).fill(Math.log(initStd));
     this.dLogStd = new Float32Array(actDim);
     this.normalizer = new ObsNormalizer(obsDim);

@@ -68,6 +68,7 @@ npm run check:standup   # the deployment loop: does the duck get up?
 npm run check:env       # the training env: does the reward stack rank behaviour?
 npm run check:grad      # finite-difference the hand-written backprop
 npm run check:ppo       # can PPO solve a toy task at all?
+npm run check:kernels   # do the SIMD kernels match the JS reference?
 npm run check:trainer   # can it learn on the robot, and does a checkpoint restore?
 npm run typecheck
 ```
@@ -175,7 +176,7 @@ for the measured budget, the architecture and the sim2real seams.
 2. ~~M0: throughput harness~~ ✅ — ~58k control steps/s on an 18-thread laptop
 3. ~~M1: vectorized environment + the sim2real seams~~ ✅
 4. ~~M2: PPO on CPU, checkpoint/resume~~ ✅
-5. M3: fast rollout inference (M0 measured it at ~70% of the step budget), WebGPU learner
+5. ~~M3: fast MLP kernels~~ ✅ — 7.5× per iteration; physics is now the bottleneck
 6. M4: fine-tune a shipped checkpoint; M5: from-scratch, export to ONNX
 
 ## Known rough edges

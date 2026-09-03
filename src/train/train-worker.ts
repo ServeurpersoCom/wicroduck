@@ -11,6 +11,7 @@ import { compileScene, loadModelAssets } from "../sim/scene.ts";
 import { holdPoseSpec, standupSpec } from "./env/standup.ts";
 import { Trainer, type Checkpoint } from "./trainer.ts";
 import { loadCheckpoint, saveCheckpoint } from "./checkpoint-store.ts";
+import { loadKernels } from "./kernels/index.ts";
 import type { FromTrainWorker, ToTrainWorker, TrainInit } from "./train-protocol.ts";
 
 let trainer: Trainer | null = null;
@@ -25,7 +26,16 @@ async function init(baseUrl: string, options: TrainInit): Promise<void> {
   const assets = await loadModelAssets(() => {}, [options.robotXml]);
   const { model, standKey } = compileScene(assets, { robotXml: options.robotXml });
   const spec = options.task === "hold_pose" ? holdPoseSpec() : standupSpec();
-  trainer = new Trainer({ mujoco: assets.mujoco, model, standKey, spec, config: options.config });
+  // Vite turns this into a static asset URL. If it fails to load — an engine
+  // without SIMD, a stripped deployment — the nets fall back to JavaScript
+  // rather than the worker dying.
+  const kernels = await fetch(new URL("./kernels/kernels.wasm", import.meta.url))
+    .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
+    .then((bytes) => loadKernels(bytes))
+    .catch(() => null);
+  trainer = new Trainer({
+    mujoco: assets.mujoco, model, standKey, spec, config: options.config, kernels,
+  });
 
   let resumedAt = 0;
   if (options.resume) {
@@ -39,6 +49,7 @@ async function init(baseUrl: string, options: TrainInit): Promise<void> {
     type: "ready",
     resumedAt,
     params: trainer.ac.actor.paramCount + trainer.ac.critic.paramCount,
+    simd: trainer.usesSimd,
   });
 }
 

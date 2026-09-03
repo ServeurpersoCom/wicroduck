@@ -228,6 +228,42 @@ backward pass at nearly nothing, and ones with dense synthetic gradients
 over-price it by ~28%. `UpdateStats` now reports its own `fwdMs`/`bwdMs`/
 `otherMs`, measured in place, because neither synthetic bracket was right.
 
+### M3 result — 7.5× on a training iteration
+
+At the reference net, 32 envs × 24 steps:
+
+| | before | after |
+| --- | ---: | ---: |
+| Rollout physics + reward | 85 ms | 86 ms |
+| Rollout policy forward | 197 ms | 15 ms |
+| Update forward | 993 ms | 90 ms |
+| Update backward | 1,236 ms | 127 ms |
+| Clip + Adam | 21 ms | 21 ms |
+| **Per iteration** | **2,530 ms** | **339 ms** |
+
+Two steps. First, blocking the JavaScript kernels — eight samples share each
+weight-row load instead of re-streaming the whole matrix per sample — for
+1.75×, with forward results *bit-identical* because each accumulator still
+sums in the same order. Then SIMD kernels in WebAssembly (`src/train/kernels/`)
+for another 4.3×; `check:kernels` asserts they match the JavaScript reference
+to ~2e-7 relative and the JavaScript path stays as both reference and fallback.
+
+**The bottleneck has flipped.** Physics is now 25% of an iteration at the
+reference net and **74%** at the small one, while the learner is 4–6%. The next
+speedup is not a faster learner — it is more rollout workers feeding one, which
+is exactly the split M0's numbers pointed at and M2 deliberately deferred.
+
+Two things broke on the way, both from the kernel heap being a bump allocator
+that never frees: `#ensureBatch` reallocated whenever the batch size changed,
+and training alternates rollout (32) and minibatch (192) every iteration, so it
+leaked until the heap ran out. It is grow-only now. And `kalloc` bumps a
+pointer without growing the memory behind it — an overrun there would have been
+a wild pointer rather than an error.
+
+Also worth recording: the hand-written SIMD feature probe I used first was
+malformed and reported "no SIMD" on an engine that supports it. Validating the
+real module is both simpler and tests the thing that actually matters.
+
 ### Three bugs that only a gate would have caught
 
 **The observation normalizer must not update between rollout and update.**
@@ -275,7 +311,7 @@ moving a run between machines is still to do.
 | ~~M0~~ | ~~Throughput harness~~ | ✅ ~58 k steps/s — section 1 |
 | ~~M1~~ | ~~Vectorized env + the four seams~~ | ✅ `alpha_stand` 8.91 vs 1.64 do-nothing — section 4 |
 | ~~M2~~ | ~~PPO on CPU + checkpoint/resume~~ | ✅ toy task solved, hold-pose learned — section 4 |
-| **M3** | The **learner's** forward/backward — 89% of an iteration at reference net size. WASM SIMD, then WebGPU | Iteration time low enough to watch |
+| ~~M3~~ | ~~The learner's forward/backward~~ | ✅ 7.5× — 2,530 ms → 339 ms per iteration |
 | **M4** | Fine-tune from a shipped checkpoint | A visibly adapted policy |
 | **M5** | From-scratch standup, ONNX export, round-trip into Simulate | A policy we trained, running in the Simulate tab |
 

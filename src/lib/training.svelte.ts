@@ -30,6 +30,7 @@ export class TrainingSession {
   totalSteps = $state(0);
   paramCount = $state(0);
   resumedAt = $state(0);
+  simd = $state(false);
   last = $state<IterationStats | null>(null);
   history = $state<HistoryPoint[]>([]);
   checkpoints = $state<CheckpointInfo[]>([]);
@@ -86,6 +87,7 @@ export class TrainingSession {
       const msg = e.data;
       if (msg.type === "ready") {
         this.paramCount = msg.params;
+        this.simd = msg.simd;
         this.resumedAt = msg.resumedAt;
         this.iteration = msg.resumedAt;
         this.status = "running";

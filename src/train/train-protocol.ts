@@ -22,7 +22,7 @@ export type ToTrainWorker =
   | { type: "dispose" };
 
 export type FromTrainWorker =
-  | { type: "ready"; resumedAt: number; params: number }
+  | { type: "ready"; resumedAt: number; params: number; simd: boolean }
   | { type: "stats"; stats: IterationStats }
   | { type: "saved"; name: string; iteration: number }
   | { type: "stopped"; iteration: number }

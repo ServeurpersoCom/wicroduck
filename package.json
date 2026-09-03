@@ -17,8 +17,10 @@
     "check:grad": "node scripts/check-grad.ts",
     "check:ppo": "node scripts/check-ppo.ts",
     "check:trainer": "node scripts/check-trainer.ts",
-    "check": "node scripts/check-node-compat.mjs && npm run typecheck && npm run check:grad && npm run check:ppo && npm run check:env && npm run check:trainer",
-    "profile": "node scripts/profile-train.ts"
+    "check": "node scripts/check-node-compat.mjs && npm run typecheck && npm run check:grad && npm run check:kernels && npm run check:ppo && npm run check:env && npm run check:trainer",
+    "profile": "node scripts/profile-train.ts",
+    "build:kernels": "node scripts/build-kernels.mjs",
+    "check:kernels": "node scripts/check-kernels.ts"
   },
   "dependencies": {
     "@mujoco/mujoco": "^3.12.0",
