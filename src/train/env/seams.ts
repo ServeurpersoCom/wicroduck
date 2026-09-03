@@ -39,6 +39,16 @@ export interface EnvContext {
   readonly joints: JointIndex;
   /** Index within the vectorized batch, for per-env randomized parameters. */
   readonly envId: number;
+  /**
+   * Seconds since this episode started, at the instant the physics has
+   * reached. Live: it advances between the actuator being applied and the
+   * rewards being scored.
+   *
+   * A reset reads it too, and it is chosen BEFORE the pose is set, so a task
+   * that starts mid-motion can pose itself for the phase it is about to be
+   * scored at.
+   */
+  readonly time: number;
 }
 
 // ── Seam 1: actuators ────────────────────────────────────────────────────

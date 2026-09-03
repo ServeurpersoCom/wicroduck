@@ -24,9 +24,18 @@ import { loadKernelsFromDisk } from "../src/train/kernels/load.node.ts";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MODEL_DIR = path.join(ROOT, "public/model/microduck");
 const ROBOT_XML = "robot_allcollisions-nv.xml";
-// 150 keeps the gate ~45s and lands well clear of the thresholds. At 40 it
-// passed by a single percentage point, which is a flaky test, not a gate.
-const ITERS = Number(process.argv[2] ?? 150);
+// 400 iterations, ~60s. It was 150, which was not a gate but a coin flip:
+// measured across seven seeds, 150 iterations put the final standing fraction
+// anywhere between 19% and 100%, so an unrelated change that merely reshuffled
+// which environment got which starting phase could move the result from a
+// comfortable pass to a clear fail. The cause is that 150 iterations leaves
+// the run unconverged and bimodal, so the fix is more iterations rather than a
+// lower bar — at 400 the three worst seeds land at 43%, 61% and 100%.
+const ITERS = Number(process.argv[2] ?? 400);
+// Second argument is the seed. The gate runs on 7; the others exist because
+// "did that change break it, or did it just reshuffle the dice?" is otherwise
+// unanswerable on a task this noisy.
+const SEED = Number(process.argv[3] ?? 7);
 
 const { mujoco, model, standKey } = await loadModelFromDisk(MODEL_DIR, ROBOT_XML, fs, path);
 
@@ -34,7 +43,7 @@ const config: TrainerConfig = {
   ...DEFAULT_TRAINER,
   envs: 32,
   stepsPerIter: 24,
-  seed: 7,
+  seed: SEED,
   // Smaller than the reference 512/256/128: scalar-JS backprop is the cost
   // here, and this gate is about whether the learner works, not final quality.
   hidden: [128, 64],
@@ -107,7 +116,7 @@ if (!(after.rewardPerStep > before.rewardPerStep * 1.15)) {
     `reward did not improve 15% (${before.rewardPerStep.toFixed(3)} -> ${after.rewardPerStep.toFixed(3)})`,
   );
 }
-// Not "solves balancing" — 192k steps is ~1/500th of what the reference recipe
+// Not "solves balancing" — 300k steps is ~1/5000th of what the reference recipe
 // spends on stand-up, so the bar is that the learner demonstrably moves the
 // policy, not that it masters the task.
 if (!(after.standingFraction > 0.35)) {

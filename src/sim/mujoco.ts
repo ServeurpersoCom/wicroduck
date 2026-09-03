@@ -28,6 +28,9 @@ export interface MjModel {
   readonly geom_rgba: MjArray;
   readonly mat_rgba: MjArray;
 
+  /** [njnt, 2] hinge limits. Only meaningful where jnt_limited is set. */
+  readonly jnt_range: MjArray;
+
   readonly mesh_vertadr: MjArray;
   readonly mesh_vertnum: MjArray;
   readonly mesh_vert: MjArray;

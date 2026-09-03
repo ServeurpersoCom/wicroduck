@@ -30,6 +30,36 @@ export const DEFAULT_POSE = new Float32Array([
  *         actions(14), command(13)] — 61 floats. */
 export const CMD_SIZE = 13;
 export const OBS_SIZE = 3 + 3 + NUM_JOINTS * 3 + CMD_SIZE; // 61
+/** Where the command block starts inside one observation. The get-up policies
+ *  were trained with it all zeros; tasks that need to tell the policy
+ *  something — a reference-motion phase, a velocity target — write here. */
+export const CMD_OFFSET = OBS_SIZE - CMD_SIZE; // 48
+
+/**
+ * Hinge limits from the MJCF, policy order, radians: [min, max] per joint.
+ *
+ * Duplicated here rather than read off the compiled model because the motion
+ * parser has to reject an out-of-range pose before any model exists — and a
+ * pose MuJoCo silently clamps is a motion that plays back wrong for reasons
+ * nothing reports. scripts/check-motion.ts asserts these still match the
+ * compiled ranges, so the copy cannot drift.
+ */
+export const JOINT_LIMITS: readonly (readonly [number, number])[] = [
+  [-0.4363, 0.5236],   // left_hip_yaw
+  [-0.3840, 0.3840],   // left_hip_roll
+  [-1.5708, 1.5708],   // left_hip_pitch
+  [-1.5708, 1.5708],   // left_knee
+  [-1.5708, 1.5708],   // left_ankle
+  [-1.5708, 1.0472],   // neck_pitch
+  [-1.5708, 1.5708],   // head_pitch
+  [-2.9671, 2.9671],   // head_yaw
+  [-0.4363, 0.4363],   // head_roll
+  [-0.5236, 0.4363],   // right_hip_yaw
+  [-0.3840, 0.3840],   // right_hip_roll
+  [-1.5708, 1.5708],   // right_hip_pitch
+  [-1.5708, 1.5708],   // right_knee
+  [-1.5708, 1.5708],   // right_ankle
+];
 
 export const ACTION_SCALE = 1.0;
 

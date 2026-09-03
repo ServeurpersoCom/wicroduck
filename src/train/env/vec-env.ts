@@ -160,18 +160,22 @@ export class VecEnv {
   }
 
   /**
-   * Desynchronize the episode clocks.
+   * Desynchronize the episode clocks by resetting every environment at a
+   * random point in its episode.
    *
    * Environments created (or reset) together would otherwise finish together
    * forever, so every rollout samples one narrow slice of episode time instead
    * of the state distribution. The batch stops being representative and the
    * metrics oscillate with the episode period rather than tracking learning —
    * which is exactly what it looked like the first time this was missing.
+   *
+   * This is a full reset, not a poke at the step counter: a task whose reset
+   * pose depends on the episode clock (a reference motion starts at the pose
+   * belonging to its phase) would otherwise be left posed for time 0 while its
+   * clock said otherwise.
    */
   stagger(): void {
-    for (let e = 0; e < this.count; e++) {
-      this.#stepCount[e] = Math.floor(this.#rng() * this.#maxSteps);
-    }
+    for (let e = 0; e < this.count; e++) this.resetEnv(e, { stagger: true });
   }
 
   get maxSteps(): number {
@@ -179,16 +183,34 @@ export class VecEnv {
   }
 
   #ctx(envId: number): EnvContext {
+    const self = this;
     return {
       mujoco: this.#mujoco,
       model: this.#model,
       data: this.#datas[envId],
       joints: this.joints,
       envId,
+      // A getter, not a snapshot: step() builds the context once and reads it
+      // on both sides of the episode clock advancing.
+      get time(): number {
+        return self.#stepCount[envId] * CTRL_DT;
+      },
     };
   }
 
-  resetEnv(envId: number): void {
+  /**
+   * Start a fresh episode in one environment.
+   *
+   * The episode clock is chosen BEFORE the spec poses the robot, and reaches
+   * the spec as `ctx.time`, so a task that starts mid-motion can pose itself
+   * to match. (Reference-state initialisation: without it a motion task only
+   * ever sees the beginning of its motion, and has to learn the whole thing as
+   * one chain from a single starting state.)
+   */
+  resetEnv(envId: number, options: { stagger?: boolean } = {}): void {
+    this.#stepCount[envId] = options.stagger
+      ? Math.floor(this.#rng() * this.#maxSteps)
+      : 0;
     const ctx = this.#ctx(envId);
     // Restore-then-apply lives in applyRandomizers, so DR cannot compound
     // across episodes no matter what an individual randomizer does.
@@ -201,18 +223,17 @@ export class VecEnv {
     // Not carried across the reset, or the first step of a new episode reads a
     // huge acceleration from the teleport.
     this.#prevVz[envId] = 0;
-    this.#stepCount[envId] = 0;
     this.#writeObs(envId, new Float32Array(NUM_JOINTS));
   }
 
   /**
-   * Reset every environment. Staggers afterwards by default — an aligned reset
-   * is only wanted for evaluation, where every environment should be measured
-   * over the same window.
+   * Reset every environment. Staggered by default — an aligned reset is only
+   * wanted for evaluation, where every environment should be measured over the
+   * same window.
    */
   resetAll(options: { stagger?: boolean } = {}): Float32Array {
-    for (let e = 0; e < this.count; e++) this.resetEnv(e);
-    if (options.stagger ?? true) this.stagger();
+    const stagger = options.stagger ?? true;
+    for (let e = 0; e < this.count; e++) this.resetEnv(e, { stagger });
     return this.#obs;
   }
 
@@ -275,6 +296,11 @@ export class VecEnv {
       this.#actuator.apply(ctx, action);
       for (let s = 0; s < DECIMATION; s++) this.#mujoco.mj_step(this.#model, ctx.data);
 
+      // Advanced BEFORE the reward, not after: `ctx.time` has to name the
+      // instant the physics just reached, or every term that reads the clock —
+      // a reference-motion tracker, most obviously — is graded against the
+      // pose from one control step ago.
+      this.#stepCount[e]++;
       const state = this.#stepState(e, action);
       let total = 0;
       for (const term of this.#spec.rewards) {
@@ -293,7 +319,6 @@ export class VecEnv {
       }
       this.#reward[e] = total;
 
-      this.#stepCount[e]++;
       const failed = this.#spec.terminations.some((t) => t.check(ctx, state));
       const timedOut = this.#stepCount[e] >= this.#maxSteps;
       this.#done[e] = failed || timedOut ? 1 : 0;
@@ -331,6 +356,13 @@ export class VecEnv {
       action,
       prevAction: this.#prevAction.subarray(envId * NUM_JOINTS, (envId + 1) * NUM_JOINTS),
     };
+  }
+
+  /** Episode clock for one environment, seconds — what a reward term sees as
+   *  `ctx.time`. Exposed for diagnostics and for anything driving the
+   *  environments from outside, such as a reference-motion oracle. */
+  timeOf(envId: number): number {
+    return this.#stepCount[envId] * CTRL_DT;
   }
 
   /** Read-only view of an environment's MuJoCo state, for diagnostics. */
