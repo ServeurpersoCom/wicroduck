@@ -23,6 +23,28 @@ export type ResetPose = (
   standKey: number,
 ) => void;
 
+/**
+ * Exploration settings a task wants.
+ *
+ * These are NOT one global tuning. A stabilisation task (hold a pose, track a
+ * velocity) is destroyed by action noise — the behaviour being learned is the
+ * thing the noise breaks. A discovery task (get up off the floor) cannot find
+ * the behaviour at all without it. Tuning that suits one silently disables the
+ * other, which is exactly what happened here: settings picked for hold-pose
+ * were applied to stand-up and it never left 0% standing.
+ */
+export interface ExplorationHints {
+  /** Initial action standard deviation, in radians of joint offset. */
+  initStd: number;
+  entropyCoef: number;
+  /**
+   * Adaptive-LR target. KL scales as (delta-mean / sigma)^2, so a task running
+   * at a small sigma needs a proportionally larger target or the learning rate
+   * is pinned at its floor.
+   */
+  desiredKl: number;
+}
+
 export interface EnvSpec {
   readonly name: string;
   /** Actuated joints, in policy order. Resolved by name — never by index. */
@@ -32,6 +54,8 @@ export interface EnvSpec {
   readonly reset: ResetPose;
   /** Episode length in seconds; the reference standup task uses 6 s. */
   readonly episodeLengthS: number;
+  /** What this task needs from exploration; see ExplorationHints. */
+  readonly exploration: ExplorationHints;
   readonly actuator?: Actuator;
   readonly randomizers?: readonly Randomizer[];
   readonly obsPipeline?: ObsPipeline;
@@ -80,6 +104,8 @@ export class VecEnv {
    *  is a wasm boundary crossing, and one per env per step is not free. */
   readonly #zOut: Float32Array;
   readonly #uprightOut: Float32Array;
+  /** Trunk vertical velocity from the previous control step, for acceleration. */
+  readonly #prevVz: Float32Array;
   readonly #rng: () => number;
 
   /** Accumulated per-term reward since the last resetBreakdown(). */
@@ -127,6 +153,7 @@ export class VecEnv {
     this.#scratchJoints = new Float32Array(NUM_JOINTS);
     this.#zOut = new Float32Array(opts.count);
     this.#uprightOut = new Float32Array(opts.count);
+    this.#prevVz = new Float32Array(opts.count);
     for (const t of opts.spec.rewards) this.breakdown[t.name] = 0;
 
     this.resetAll();
@@ -171,6 +198,9 @@ export class VecEnv {
     this.#actuator.reset(ctx);
     this.#obsPipeline.reset(ctx, this.#rng);
     this.#prevAction.fill(0, envId * NUM_JOINTS, (envId + 1) * NUM_JOINTS);
+    // Not carried across the reset, or the first step of a new episode reads a
+    // huge acceleration from the teleport.
+    this.#prevVz[envId] = 0;
     this.#stepCount[envId] = 0;
     this.#writeObs(envId, new Float32Array(NUM_JOINTS));
   }
@@ -287,9 +317,15 @@ export class VecEnv {
     const quat = data.body(this.#trunkId).xquat as Float64Array;
     this.#zOut[envId] = data.qpos[2];
     this.#uprightOut[envId] = 1 - 2 * (quat[1] * quat[1] + quat[2] * quat[2]);
+    // For a free joint, qvel[0..2] is linear velocity in the WORLD frame.
+    const vz = data.qvel[2];
+    const az = (vz - this.#prevVz[envId]) / CTRL_DT;
+    this.#prevVz[envId] = vz;
     return {
       z: data.qpos[2],
       quat,
+      vz,
+      az,
       jointPos: this.#scratchJoints,
       jointTarget: this.#target,
       action,

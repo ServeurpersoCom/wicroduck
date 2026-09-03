@@ -28,6 +28,10 @@ export interface StepState {
   /** Action this step and the one before, for smoothness terms. */
   action: Float32Array;
   prevAction: Float32Array;
+  /** Trunk vertical velocity, m/s. World frame. */
+  vz: number;
+  /** Trunk vertical acceleration over the last control step, m/s^2. */
+  az: number;
 }
 
 export interface RewardTerm {
@@ -56,7 +60,13 @@ export const STAND_Z = 0.115;
 /** Measured seated equilibrium. */
 export const SIT_Z = 0.06;
 
-export function standupRewards(): RewardTerm[] {
+/**
+ * The stabilisation core: hold the reference pose, upright, at height.
+ *
+ * Shared by every task here. Anything that pays for MOTION belongs in
+ * standupRewards() instead — see the note there.
+ */
+function stabilityRewards(): RewardTerm[] {
   return [
     // Two-layer height Gaussian: the wide one pulls from a sit, the sharp one
     // supplies gradient in the last centimetre where the wide one has
@@ -138,6 +148,56 @@ export function standupRewards(): RewardTerm[] {
         for (let j = 0; j < NUM_JOINTS; j++) acc += sq(s.action[j] - s.prevAction[j]);
         return acc;
       },
+    },
+  ];
+}
+
+/**
+ * Stabilisation only. A task that starts where it should stay wants nothing
+ * that pays for movement.
+ */
+export function holdPoseRewards(): RewardTerm[] {
+  return stabilityRewards();
+}
+
+/**
+ * Stabilisation plus the terms that get a policy OFF THE FLOOR.
+ *
+ * These are deliberately not in the shared core. `com_upward_velocity` gates
+ * at 0.125 m — just above the 0.115 m standing height, so it stays live
+ * through the final centimetre of a rise — which means a duck that is already
+ * standing gets paid for bouncing. Correct for stand-up, a reward-hacking
+ * vector for anything that starts upright. It cost a measurable chunk of
+ * hold-pose's learning before the stacks were split.
+ */
+export function standupRewards(): RewardTerm[] {
+  return [
+    ...stabilityRewards(),
+    // THE BOOTSTRAP TERM. Without it the stack is destination-only, and the
+    // reference project records exactly what that produces: "stay sitting
+    // upright collecting most-of-pose + upright" is the dominant local
+    // optimum, and the policy parks there. Paying for upward velocity makes
+    // any rise ATTEMPT immediately positive, which is what gets exploration
+    // off the ground.
+    //
+    // Not capped: the reference tried capping the rewarded rise speed and it
+    // shrank the payoff of the noisy recovery attempts discovery needs.
+    {
+      name: "com_upward_velocity",
+      weight: 0.75,
+      compute: (_c, s) => (s.z < 0.125 ? Math.max(0, s.vz) : 0),
+    },
+    // Pairs with the term above: constant upward velocity collects the rise
+    // reward AND has zero vertical acceleration, so together they select for a
+    // smooth constant-speed rise rather than a lunge.
+    //
+    // Self-negating, so the weight is POSITIVE. A negative weight here
+    // double-negates into a reward for vertical shocks — a sign bug the
+    // reference project hit more than once.
+    {
+      name: "gentle_rise",
+      weight: 0.005,
+      compute: (_c, s) => -Math.abs(s.az),
     },
   ];
 }

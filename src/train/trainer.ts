@@ -14,7 +14,7 @@ import type { MjModel, Mujoco } from "../sim/mujoco.ts";
 import { ActorCritic, HIDDEN } from "./ac-policy.ts";
 import { Adam } from "./nn.ts";
 import { DEFAULT_PPO, makeBuffer, ppoUpdate, type PpoConfig, type RolloutBuffer, type UpdateStats } from "./ppo.ts";
-import { VecEnv, type EnvSpec } from "./env/vec-env.ts";
+import { VecEnv, type EnvSpec, type ExplorationHints } from "./env/vec-env.ts";
 import type { Kernels } from "./kernels/index.ts";
 import { STAND_Z } from "./env/rewards.ts";
 
@@ -25,7 +25,12 @@ export interface TrainerConfig {
   ppo: PpoConfig;
   hidden: readonly number[];
   seed: number;
-  initStd: number;
+  /**
+   * Exploration overrides. Left undefined, the TASK decides — see
+   * ExplorationHints. A stabilisation task and a discovery task want opposite
+   * settings, so a single global value is wrong for one of them.
+   */
+  exploration?: Partial<ExplorationHints>;
 }
 
 export const DEFAULT_TRAINER: Omit<TrainerConfig, "seed"> = {
@@ -35,7 +40,6 @@ export const DEFAULT_TRAINER: Omit<TrainerConfig, "seed"> = {
   stepsPerIter: 32,
   ppo: DEFAULT_PPO,
   hidden: HIDDEN,
-  initStd: 1.0,
 };
 
 export interface IterationStats extends UpdateStats {
@@ -102,6 +106,10 @@ export class Trainer {
   readonly env: VecEnv;
   readonly config: TrainerConfig;
 
+  /** What the task asked for, after any explicit override. Reported so a run's
+   *  exploration is visible rather than implicit. */
+  readonly exploration: ExplorationHints;
+
   #opt: Adam;
   #buf: RolloutBuffer;
   readonly #rng: SeededRng;
@@ -110,6 +118,7 @@ export class Trainer {
   /** Undiscounted return accumulating per environment, reset on episode end. */
   #episodeReturn: Float32Array;
   readonly #specName: string;
+  readonly #ppo: PpoConfig;
 
   constructor(opts: {
     mujoco: Mujoco;
@@ -131,15 +140,21 @@ export class Trainer {
       count: opts.config.envs,
       rng: this.#rng.next,
     });
+    this.exploration = { ...opts.spec.exploration, ...opts.config.exploration };
     this.ac = new ActorCritic(
       OBS_SIZE,
       NUM_JOINTS,
       this.#rng.next,
-      opts.config.initStd,
+      this.exploration.initStd,
       opts.config.hidden,
       opts.kernels ?? null,
     );
     this.#opt = this.ac.makeOptimizer(opts.config.ppo.lr);
+    this.#ppo = {
+      ...opts.config.ppo,
+      entropyCoef: this.exploration.entropyCoef,
+      desiredKl: this.exploration.desiredKl,
+    };
     this.#buf = makeBuffer(
       opts.config.stepsPerIter,
       opts.config.envs,
@@ -204,7 +219,7 @@ export class Trainer {
     const rolloutMs = performance.now() - rolloutStart;
 
     const updateStart = performance.now();
-    const stats = ppoUpdate(this.ac, this.#opt, buf, this.config.ppo, this.#rng.next);
+    const stats = ppoUpdate(this.ac, this.#opt, buf, this.#ppo, this.#rng.next);
     const updateMs = performance.now() - updateStart;
 
     // Normalizer statistics update AFTER the update, never between rollout and

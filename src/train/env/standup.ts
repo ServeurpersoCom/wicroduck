@@ -10,7 +10,7 @@
 
 import { DEFAULT_POSE, JOINT_NAMES } from "../../sim/microduck.ts";
 import type { EnvSpec } from "./vec-env.ts";
-import { standupRewards, standupTerminations } from "./rewards.ts";
+import { holdPoseRewards, standupRewards, standupTerminations } from "./rewards.ts";
 import type { EnvContext } from "./seams.ts";
 
 /**
@@ -70,12 +70,21 @@ export interface StandupOptions {
  * was handed will certainly not discover how to reach one.
  */
 export function holdPoseSpec(options: StandupOptions = {}): EnvSpec {
-  return standupSpec({
-    name: "hold_pose",
-    resetMix: { stand: 1 },
-    episodeLengthS: options.episodeLengthS ?? 3.0,
-    ...options,
-  });
+  return {
+    ...standupSpec({
+      name: "hold_pose",
+      resetMix: { stand: 1 },
+      episodeLengthS: options.episodeLengthS ?? 3.0,
+      ...options,
+    }),
+    // No motion rewards: this task starts where it should stay, and
+    // com_upward_velocity would pay it to bounce. See standupRewards().
+    rewards: holdPoseRewards(),
+    // Stabilisation: the duck starts where it needs to stay, so large action
+    // noise destroys the behaviour before PPO can reinforce it. Small sigma
+    // forces a proportionally larger KL target — see ExplorationHints.
+    exploration: { initStd: 0.1, entropyCoef: 0, desiredKl: 0.05 },
+  };
 }
 
 export function standupSpec(options: StandupOptions = {}): EnvSpec {
@@ -87,6 +96,9 @@ export function standupSpec(options: StandupOptions = {}): EnvSpec {
   if (total <= 0) throw new Error("resetMix must have a positive weight somewhere");
   return {
     name: options.name ?? "standup",
+    // Discovery: the rise has to be stumbled into before it can be refined,
+    // so this keeps the reference recipe's exploration rather than hold-pose's.
+    exploration: { initStd: 1.0, entropyCoef: 0.01, desiredKl: 0.01 },
     joints: JOINT_NAMES,
     rewards: standupRewards(),
     terminations: standupTerminations(),

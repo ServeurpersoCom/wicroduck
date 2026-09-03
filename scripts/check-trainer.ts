@@ -38,25 +38,9 @@ const config: TrainerConfig = {
   // Smaller than the reference 512/256/128: scalar-JS backprop is the cost
   // here, and this gate is about whether the learner works, not final quality.
   hidden: [128, 64],
-  // Actions are joint-angle offsets in radians. The reference starts at
-  // std 1.0, but that is ~57 degrees of noise on every joint every control
-  // step: the duck is shaken apart and never experiences standing, so there is
-  // nothing for PPO to reinforce. 0.05 rad (~3 degrees) explores without
-  // destroying the behaviour being learned.
-  initStd: 0.1,
-  ppo: {
-    ...DEFAULT_PPO,
-    minibatches: 4,
-    epochs: 4,
-    // No entropy bonus: at this noise scale it inflates log-std faster than
-    // the task can shrink it, and exploration is already set by initStd.
-    entropyCoef: 0,
-    // For a fixed-sigma Gaussian, KL grows as (delta-mean / sigma)^2 — so a
-    // small sigma makes KL enormous for policy changes that are tiny in
-    // radians. The reference 0.01 was tuned at sigma 1.0; at 0.1 it pins the
-    // adaptive learning rate to its floor and freezes the run.
-    desiredKl: 0.05,
-  },
+  // Exploration comes from holdPoseSpec's ExplorationHints — this task is
+  // destroyed by action noise, and saying so lives with the task, not here.
+  ppo: { ...DEFAULT_PPO, minibatches: 4, epochs: 4 },
 };
 
 const kernels = await loadKernelsFromDisk();
@@ -64,7 +48,8 @@ const trainer = new Trainer({ mujoco, model, standKey, spec: holdPoseSpec(), con
 console.log(
   `hold-pose: ${config.envs} envs x ${config.stepsPerIter} steps, ` +
   `net ${config.hidden.join("/")}, ${trainer.ac.actor.paramCount + trainer.ac.critic.paramCount} params, ` +
-  `${trainer.usesSimd ? "SIMD kernels" : "JavaScript"}`,
+  `${trainer.usesSimd ? "SIMD kernels" : "JavaScript"}, ` +
+  `sigma ${trainer.exploration.initStd}, entropy ${trainer.exploration.entropyCoef}`,
 );
 
 const EVAL_STEPS = 150; // one full 3 s episode

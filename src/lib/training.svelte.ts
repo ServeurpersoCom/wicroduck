@@ -62,11 +62,9 @@ export class TrainingSession {
       stepsPerIter: this.stepsPerIter,
       hidden: this.hidden,
       seed: 7,
-      // Actions are joint offsets in radians: the reference std of 1.0 is ~57
-      // degrees of noise per joint per step, which destroys the behaviour
-      // being learned long before PPO can reinforce it.
-      initStd: 0.1,
-      ppo: { ...DEFAULT_PPO, epochs: 4, entropyCoef: 0, desiredKl: 0.05 },
+      // Exploration is left to the TASK: hold-pose is destroyed by action
+      // noise, stand-up cannot be discovered without it. See ExplorationHints.
+      ppo: { ...DEFAULT_PPO, epochs: 4 },
     };
   }
 
