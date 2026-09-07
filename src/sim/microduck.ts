@@ -69,8 +69,8 @@ export const ACTION_SCALE = 1.0;
  * scaled by its full-deflection maximum. Deflection below the deadzone reads
  * as centre, so a resting stick never makes the duck creep.
  */
-export const MAX_LINEAR = 0.3;
-export const MAX_ANGULAR = 1.5;
+export const MAX_LINEAR = 1.0;
+export const MAX_ANGULAR = 3.0;
 export const STICK_DEADZONE = 0.1;
 /** Twist magnitude above which the walking policy drives instead of the
  *  standing one, from infer_policy.py's switch_threshold. */
