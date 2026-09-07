@@ -189,6 +189,7 @@ export class Session {
       while (accumulator >= CTRL_DT) {
         accumulator -= CTRL_DT;
         await controller.step();
+        viewer.sync(sim.model, sim.data);
         steps++;
       }
 
@@ -205,8 +206,9 @@ export class Session {
       this.heightCm = Math.round(t.height * 1000) / 10;
       this.walking = t.walking;
 
-      viewer.sync(sim.model, sim.data);
-      viewer.render();
+      // Draw the pose the leftover sub-step time points at, so a 50 Hz robot
+      // glides on a 60 Hz display instead of repeating every sixth frame.
+      viewer.render(accumulator / CTRL_DT, dt);
       this.#frame = requestAnimationFrame(() => void tick());
     };
     void tick();
