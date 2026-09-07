@@ -41,6 +41,33 @@ function meshGeometry(model: MjModel, meshId: number): THREE.BufferGeometry {
   return geo;
 }
 
+/** Checker cell edge on the floor, m. */
+const CHECKER_CELL = 0.1;
+/** How much lighter the alternate cell is than the floor's own color. */
+const CHECKER_LIFT = 0.05;
+
+/**
+ * A 2x2 checker in the floor's color and a lighter shade of it, repeated over
+ * the plane. Mipmapped and anisotropic, so at distance it settles into the
+ * flat mean gray instead of shimmering.
+ */
+function checkerTexture(r: number, g: number, b: number, halfSize: number, anisotropy: number): THREE.Texture {
+  const lift = (v: number) => Math.min(1, v + CHECKER_LIFT);
+  const dark = [r, g, b].map((v) => Math.round(v * 255));
+  const light = [r, g, b].map((v) => Math.round(lift(v) * 255));
+  const data = new Uint8Array([...dark, 255, ...light, 255, ...light, 255, ...dark, 255]);
+  const tex = new THREE.DataTexture(data, 2, 2);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(halfSize / CHECKER_CELL, halfSize / CHECKER_CELL);
+  tex.magFilter = THREE.NearestFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
+  tex.anisotropy = anisotropy;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 /** Primitive geoms, sized so a unit build can be scaled by geom_size. */
 function primitiveGeometry(type: number, size: Float64Array | number[]): THREE.BufferGeometry | null {
   switch (type) {
@@ -83,7 +110,12 @@ export class Viewer {
    *  here so it is disposed once rather than once per geom. */
   private meshCache = new Map<number, THREE.BufferGeometry>();
   private readonly followTarget = new THREE.Vector3();
+  private readonly followDelta = new THREE.Vector3();
   private followBody: number | null = null;
+  /** Shadow-casting light, kept over the followed body so the tight shadow
+   *  frustum travels with the robot. */
+  private readonly key: THREE.DirectionalLight;
+  private readonly keyOffset = new THREE.Vector3(0.6, 1.2, 0.5);
   private readonly resizeObserver: ResizeObserver;
   private readonly mat = new THREE.Matrix4();
 
@@ -115,7 +147,7 @@ export class Viewer {
     const hemi = new THREE.HemisphereLight(0x9fb4d0, 0x20242c, 1.5);
     this.scene.add(hemi);
     const key = new THREE.DirectionalLight(0xffffff, 2.4);
-    key.position.set(0.6, 1.2, 0.5);
+    key.position.copy(this.keyOffset);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
     // Tight ortho frustum: the whole robot is ~25 cm tall, so the default
@@ -126,6 +158,8 @@ export class Viewer {
     key.shadow.camera.near = 0.1; key.shadow.camera.far = 4;
     key.shadow.bias = -0.0015;
     this.scene.add(key);
+    this.scene.add(key.target);
+    this.key = key;
     this.scene.add(new THREE.DirectionalLight(0xbcd4ff, 0.5).translateX(-1).translateY(0.5));
 
     this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -166,18 +200,24 @@ export class Viewer {
       const rgba = matid >= 0 ? model.mat_rgba : model.geom_rgba;
       const base = matid >= 0 ? matid * 4 : g * 4;
       const isCollision = group === GROUP_COLLISION;
+      const isPlane = type === GEOM.PLANE;
+      // The floor carries its color in the checker; every other geom in the material.
+      const map = isPlane
+        ? checkerTexture(rgba[base], rgba[base + 1], rgba[base + 2], size[0] || 10, this.renderer.capabilities.getMaxAnisotropy())
+        : null;
       const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(rgba[base], rgba[base + 1], rgba[base + 2]),
+        color: isPlane ? 0xffffff : new THREE.Color(rgba[base], rgba[base + 1], rgba[base + 2]),
+        map,
         opacity: isCollision ? 0.35 : rgba[base + 3],
         transparent: isCollision || rgba[base + 3] < 1,
-        roughness: type === GEOM.PLANE ? 0.95 : 0.55,
-        metalness: type === GEOM.PLANE ? 0 : 0.15,
+        roughness: isPlane ? 0.95 : 0.55,
+        metalness: isPlane ? 0 : 0.15,
         wireframe: isCollision,
       });
 
       const mesh = new THREE.Mesh(geometry, material);
       mesh.userData.meshId = meshId;
-      mesh.castShadow = type !== GEOM.PLANE;
+      mesh.castShadow = !isPlane;
       mesh.receiveShadow = true;
       mesh.visible = !isCollision;
       mesh.matrixAutoUpdate = false;
@@ -214,7 +254,13 @@ export class Viewer {
       const bp = data.body(this.followBody).xpos;
       // Body pose is in MuJoCo's z-up frame; the root carries the flip.
       this.followTarget.set(bp[0], bp[1], bp[2]).applyQuaternion(Z_UP);
-      this.controls.target.lerp(this.followTarget, 0.15);
+      // Camera and target move together, so the orbit offset the user set is
+      // kept while the robot walks off.
+      this.followDelta.copy(this.followTarget).sub(this.controls.target).multiplyScalar(0.15);
+      this.controls.target.add(this.followDelta);
+      this.camera.position.add(this.followDelta);
+      this.key.target.position.copy(this.controls.target);
+      this.key.position.copy(this.controls.target).add(this.keyOffset);
     }
   }
 
@@ -251,7 +297,10 @@ export class Viewer {
       if (!this.meshCache.has(obj.userData.meshId ?? -1)) obj.geometry.dispose();
       const mat = obj.material;
       if (Array.isArray(mat)) mat.forEach((m) => m.dispose());
-      else mat.dispose();
+      else {
+        if ("map" in mat) (mat.map as THREE.Texture | null)?.dispose();
+        mat.dispose();
+      }
     }
     for (const geo of this.meshCache.values()) geo.dispose();
     this.meshCache = new Map();
